@@ -1,8 +1,5 @@
 
 import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -11,66 +8,74 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-const studentLoginSchema = z.object({
-  rollNumber: z.string().min(1, 'Roll number is required'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-});
-
-const adminLoginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-});
-
-type StudentLoginForm = z.infer<typeof studentLoginSchema>;
-type AdminLoginForm = z.infer<typeof adminLoginSchema>;
-
 export const LoginForm: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('student');
+  const [studentData, setStudentData] = useState({ rollNumber: '', password: '' });
+  const [adminData, setAdminData] = useState({ email: '', password: '' });
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const studentForm = useForm<StudentLoginForm>({
-    resolver: zodResolver(studentLoginSchema),
-  });
-
-  const adminForm = useForm<AdminLoginForm>({
-    resolver: zodResolver(adminLoginSchema),
-  });
-
-  const onStudentSubmit = (data: StudentLoginForm) => {
-    // Mock student login
-    const mockStudent = {
-      id: '1',
-      name: 'John Doe',
-      rollNumber: data.rollNumber,
-      branch: 'Computer Science',
-      section: 'A',
-      year: 3,
-      semester: 5,
-      contactInfo: {
-        email: 'john.doe@college.edu',
-        phone: '+1234567890',
-        address: '123 College Street'
-      },
-      sgpa: 8.5,
-      cgpa: 8.2
-    };
-    
-    login(mockStudent, 'student');
-    navigate('/student/dashboard');
+  const validateStudent = () => {
+    const newErrors: Record<string, string> = {};
+    if (!studentData.rollNumber) newErrors.rollNumber = 'Roll number is required';
+    if (!studentData.password || studentData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const onAdminSubmit = (data: AdminLoginForm) => {
-    // Mock admin login
-    const mockAdmin = {
-      id: '1',
-      name: 'Admin User',
-      email: data.email,
-      role: 'admin' as const
-    };
-    
-    login(mockAdmin, 'admin');
-    navigate('/admin/dashboard');
+  const validateAdmin = () => {
+    const newErrors: Record<string, string> = {};
+    if (!adminData.email || !adminData.email.includes('@')) {
+      newErrors.email = 'Invalid email address';
+    }
+    if (!adminData.password || adminData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const onStudentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (validateStudent()) {
+      const mockStudent = {
+        id: '1',
+        name: 'John Doe',
+        rollNumber: studentData.rollNumber,
+        branch: 'Computer Science',
+        section: 'A',
+        year: 3,
+        semester: 5,
+        contactInfo: {
+          email: 'john.doe@college.edu',
+          phone: '+1234567890',
+          address: '123 College Street'
+        },
+        sgpa: 8.5,
+        cgpa: 8.2
+      };
+      
+      login(mockStudent, 'student');
+      navigate('/student/dashboard');
+    }
+  };
+
+  const onAdminSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (validateAdmin()) {
+      const mockAdmin = {
+        id: '1',
+        name: 'Admin User',
+        email: adminData.email,
+        role: 'admin' as const
+      };
+      
+      login(mockAdmin, 'admin');
+      navigate('/admin/dashboard');
+    }
   };
 
   return (
@@ -90,18 +95,17 @@ export const LoginForm: React.FC = () => {
             </TabsList>
             
             <TabsContent value="student">
-              <form onSubmit={studentForm.handleSubmit(onStudentSubmit)} className="space-y-4">
+              <form onSubmit={onStudentSubmit} className="space-y-4">
                 <div>
                   <Label htmlFor="rollNumber">Roll Number</Label>
                   <Input
                     id="rollNumber"
-                    {...studentForm.register('rollNumber')}
+                    value={studentData.rollNumber}
+                    onChange={(e) => setStudentData({ ...studentData, rollNumber: e.target.value })}
                     placeholder="Enter your roll number"
                   />
-                  {studentForm.formState.errors.rollNumber && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {studentForm.formState.errors.rollNumber.message}
-                    </p>
+                  {errors.rollNumber && (
+                    <p className="text-sm text-red-600 mt-1">{errors.rollNumber}</p>
                   )}
                 </div>
                 
@@ -110,13 +114,12 @@ export const LoginForm: React.FC = () => {
                   <Input
                     id="password"
                     type="password"
-                    {...studentForm.register('password')}
+                    value={studentData.password}
+                    onChange={(e) => setStudentData({ ...studentData, password: e.target.value })}
                     placeholder="Enter your password"
                   />
-                  {studentForm.formState.errors.password && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {studentForm.formState.errors.password.message}
-                    </p>
+                  {errors.password && (
+                    <p className="text-sm text-red-600 mt-1">{errors.password}</p>
                   )}
                 </div>
                 
@@ -127,19 +130,18 @@ export const LoginForm: React.FC = () => {
             </TabsContent>
             
             <TabsContent value="admin">
-              <form onSubmit={adminForm.handleSubmit(onAdminSubmit)} className="space-y-4">
+              <form onSubmit={onAdminSubmit} className="space-y-4">
                 <div>
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
                     type="email"
-                    {...adminForm.register('email')}
+                    value={adminData.email}
+                    onChange={(e) => setAdminData({ ...adminData, email: e.target.value })}
                     placeholder="Enter your email"
                   />
-                  {adminForm.formState.errors.email && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {adminForm.formState.errors.email.message}
-                    </p>
+                  {errors.email && (
+                    <p className="text-sm text-red-600 mt-1">{errors.email}</p>
                   )}
                 </div>
                 
@@ -148,13 +150,12 @@ export const LoginForm: React.FC = () => {
                   <Input
                     id="adminPassword"
                     type="password"
-                    {...adminForm.register('password')}
+                    value={adminData.password}
+                    onChange={(e) => setAdminData({ ...adminData, password: e.target.value })}
                     placeholder="Enter your password"
                   />
-                  {adminForm.formState.errors.password && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {adminForm.formState.errors.password.message}
-                    </p>
+                  {errors.password && (
+                    <p className="text-sm text-red-600 mt-1">{errors.password}</p>
                   )}
                 </div>
                 
