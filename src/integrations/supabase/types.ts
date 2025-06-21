@@ -9,7 +9,131 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          address: string | null
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          phone: string | null
+          updated_at: string
+          user_id: string | null
+          user_type: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          email: string
+          full_name: string
+          id?: string
+          phone?: string | null
+          updated_at?: string
+          user_id?: string | null
+          user_type: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          phone?: string | null
+          updated_at?: string
+          user_id?: string | null
+          user_type?: string
+        }
+        Relationships: []
+      }
+      students: {
+        Row: {
+          branch: string
+          cgpa: number | null
+          created_at: string
+          id: string
+          profile_id: string | null
+          roll_number: string
+          section: string
+          semester: number
+          sgpa: number | null
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          branch: string
+          cgpa?: number | null
+          created_at?: string
+          id?: string
+          profile_id?: string | null
+          roll_number: string
+          section: string
+          semester: number
+          sgpa?: number | null
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          branch?: string
+          cgpa?: number | null
+          created_at?: string
+          id?: string
+          profile_id?: string | null
+          roll_number?: string
+          section?: string
+          semester?: number
+          sgpa?: number | null
+          updated_at?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "students_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      timetables: {
+        Row: {
+          branch: string
+          created_at: string
+          day_of_week: string
+          id: string
+          section: string
+          semester: number
+          subject: string
+          time_slot: string
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          branch: string
+          created_at?: string
+          day_of_week: string
+          id?: string
+          section: string
+          semester: number
+          subject: string
+          time_slot: string
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          branch?: string
+          created_at?: string
+          day_of_week?: string
+          id?: string
+          section?: string
+          semester?: number
+          subject?: string
+          time_slot?: string
+          updated_at?: string
+          year?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

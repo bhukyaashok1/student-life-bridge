@@ -1,57 +1,65 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Clock, Calendar } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../integrations/supabase/client';
+
+interface TimetableEntry {
+  id: string;
+  day_of_week: string;
+  time_slot: string;
+  subject: string;
+}
 
 export const StudentTimetable: React.FC = () => {
+  const { studentData } = useAuth();
   const [selectedWeek, setSelectedWeek] = useState('current');
-
-  const timetableData = {
-    Monday: [
-      { timeSlot: "09:00-10:00", subject: "Mathematics" },
-      { timeSlot: "10:00-11:00", subject: "Physics" },
-      { timeSlot: "11:30-12:30", subject: "Chemistry" },
-      { timeSlot: "01:30-02:30", subject: "English" },
-      { timeSlot: "02:30-03:30", subject: "Computer Science" },
-    ],
-    Tuesday: [
-      { timeSlot: "09:00-10:00", subject: "Physics Lab" },
-      { timeSlot: "10:00-11:00", subject: "Physics Lab" },
-      { timeSlot: "11:30-12:30", subject: "Mathematics" },
-      { timeSlot: "01:30-02:30", subject: "Chemistry" },
-      { timeSlot: "02:30-03:30", subject: "English" },
-    ],
-    Wednesday: [
-      { timeSlot: "09:00-10:00", subject: "Computer Science" },
-      { timeSlot: "10:00-11:00", subject: "Mathematics" },
-      { timeSlot: "11:30-12:30", subject: "Physics" },
-      { timeSlot: "01:30-02:30", subject: "Chemistry Lab" },
-      { timeSlot: "02:30-03:30", subject: "Chemistry Lab" },
-    ],
-    Thursday: [
-      { timeSlot: "09:00-10:00", subject: "English" },
-      { timeSlot: "10:00-11:00", subject: "Computer Science" },
-      { timeSlot: "11:30-12:30", subject: "Mathematics" },
-      { timeSlot: "01:30-02:30", subject: "Physics" },
-      { timeSlot: "02:30-03:30", subject: "Chemistry" },
-    ],
-    Friday: [
-      { timeSlot: "09:00-10:00", subject: "Computer Science Lab" },
-      { timeSlot: "10:00-11:00", subject: "Computer Science Lab" },
-      { timeSlot: "11:30-12:30", subject: "Physics" },
-      { timeSlot: "01:30-02:30", subject: "Mathematics" },
-      { timeSlot: "02:30-03:30", subject: "English" },
-    ],
-    Saturday: [
-      { timeSlot: "09:00-10:00", subject: "Tutorial - Math" },
-      { timeSlot: "10:00-11:00", subject: "Tutorial - Physics" },
-      { timeSlot: "11:30-12:30", subject: "Tutorial - Chemistry" },
-    ],
-  };
+  const [timetableData, setTimetableData] = useState<Record<string, TimetableEntry[]>>({});
+  const [loading, setLoading] = useState(true);
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const timeSlots = ["09:00-10:00", "10:00-11:00", "11:30-12:30", "01:30-02:30", "02:30-03:30"];
+
+  useEffect(() => {
+    if (studentData) {
+      fetchTimetable();
+    }
+  }, [studentData]);
+
+  const fetchTimetable = async () => {
+    if (!studentData) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('timetables')
+        .select('*')
+        .eq('branch', studentData.branch)
+        .eq('year', studentData.year)
+        .eq('semester', studentData.semester)
+        .eq('section', studentData.section)
+        .order('day_of_week')
+        .order('time_slot');
+
+      if (error) {
+        console.error('Error fetching timetable:', error);
+        return;
+      }
+
+      // Group by day
+      const groupedData: Record<string, TimetableEntry[]> = {};
+      days.forEach(day => {
+        groupedData[day] = data?.filter(item => item.day_of_week === day) || [];
+      });
+
+      setTimetableData(groupedData);
+    } catch (error) {
+      console.error('Error in fetchTimetable:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getSubjectColor = (subject: string) => {
     const colors: Record<string, string> = {
@@ -63,19 +71,53 @@ export const StudentTimetable: React.FC = () => {
       'Physics Lab': 'bg-green-200 text-green-900 border-green-300',
       'Chemistry Lab': 'bg-purple-200 text-purple-900 border-purple-300',
       'Computer Science Lab': 'bg-red-200 text-red-900 border-red-300',
-      'Tutorial - Math': 'bg-blue-50 text-blue-700 border-blue-100',
-      'Tutorial - Physics': 'bg-green-50 text-green-700 border-green-100',
-      'Tutorial - Chemistry': 'bg-purple-50 text-purple-700 border-purple-100',
     };
     return colors[subject] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
+
+  const getTodaysClasses = () => {
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    return timetableData[today]?.length || 0;
+  };
+
+  const getNextClass = () => {
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    const todayClasses = timetableData[today] || [];
+    return todayClasses.length > 0 ? todayClasses[0] : null;
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Timetable</h1>
+          <p className="text-gray-600">Loading your class schedule...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!studentData) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Timetable</h1>
+          <p className="text-gray-600">Please complete your profile to view timetable</p>
+        </div>
+      </div>
+    );
+  }
+
+  const nextClass = getNextClass();
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Timetable</h1>
-          <p className="text-gray-600">Your weekly class schedule</p>
+          <p className="text-gray-600">
+            {studentData.branch} - Year {studentData.year}, Semester {studentData.semester}, Section {studentData.section}
+          </p>
         </div>
         <Select value={selectedWeek} onValueChange={setSelectedWeek}>
           <SelectTrigger className="w-48">
@@ -95,7 +137,7 @@ export const StudentTimetable: React.FC = () => {
             <Calendar className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">5</div>
+            <div className="text-2xl font-bold">{getTodaysClasses()}</div>
             <p className="text-xs text-muted-foreground">Classes scheduled</p>
           </CardContent>
         </Card>
@@ -106,82 +148,101 @@ export const StudentTimetable: React.FC = () => {
             <Clock className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Mathematics</div>
-            <p className="text-xs text-muted-foreground">09:00 - 10:00 AM</p>
+            <div className="text-2xl font-bold">
+              {nextClass ? nextClass.subject : 'No classes'}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {nextClass ? nextClass.time_slot : 'today'}
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Weekly Timetable</CardTitle>
-          <CardDescription>Your complete weekly schedule</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <div className="min-w-full">
-              <div className="grid grid-cols-7 gap-2 mb-4">
-                <div className="font-semibold text-center p-2 bg-gray-50 rounded">Time</div>
-                {days.map(day => (
-                  <div key={day} className="font-semibold text-center p-2 bg-gray-50 rounded">
-                    {day}
+      {Object.keys(timetableData).some(day => timetableData[day].length > 0) ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Weekly Timetable</CardTitle>
+            <CardDescription>Your complete weekly schedule</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <div className="min-w-full">
+                <div className="grid grid-cols-7 gap-2 mb-4">
+                  <div className="font-semibold text-center p-2 bg-gray-50 rounded">Time</div>
+                  {days.map(day => (
+                    <div key={day} className="font-semibold text-center p-2 bg-gray-50 rounded">
+                      {day}
+                    </div>
+                  ))}
+                </div>
+                
+                {timeSlots.map(timeSlot => (
+                  <div key={timeSlot} className="grid grid-cols-7 gap-2 mb-2">
+                    <div className="text-sm font-medium p-2 bg-gray-100 rounded text-center">
+                      {timeSlot}
+                    </div>
+                    {days.map(day => {
+                      const daySchedule = timetableData[day] || [];
+                      const classItem = daySchedule.find(item => item.time_slot === timeSlot);
+                      
+                      return (
+                        <div key={`${day}-${timeSlot}`} className="min-h-[50px]">
+                          {classItem ? (
+                            <div className={`p-2 rounded border text-xs font-medium text-center ${getSubjectColor(classItem.subject)}`}>
+                              {classItem.subject}
+                            </div>
+                          ) : (
+                            <div className="p-2 border border-gray-200 rounded bg-gray-50 text-center text-xs text-gray-400">
+                              Free
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 ))}
               </div>
-              
-              {timeSlots.map(timeSlot => (
-                <div key={timeSlot} className="grid grid-cols-7 gap-2 mb-2">
-                  <div className="text-sm font-medium p-2 bg-gray-100 rounded text-center">
-                    {timeSlot}
-                  </div>
-                  {days.map(day => {
-                    const daySchedule = timetableData[day as keyof typeof timetableData];
-                    const classItem = daySchedule?.find(item => item.timeSlot === timeSlot);
-                    
-                    return (
-                      <div key={`${day}-${timeSlot}`} className="min-h-[50px]">
-                        {classItem ? (
-                          <div className={`p-2 rounded border text-xs font-medium text-center ${getSubjectColor(classItem.subject)}`}>
-                            {classItem.subject}
-                          </div>
-                        ) : (
-                          <div className="p-2 border border-gray-200 rounded bg-gray-50 text-center text-xs text-gray-400">
-                            Free
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>No Timetable Available</CardTitle>
+            <CardDescription>
+              No timetable has been created for your class yet. Please contact your administrator.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Schedule Overview</CardTitle>
-          <CardDescription>Subject-wise class distribution</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science'].map(subject => {
-              const totalClasses = Object.values(timetableData).flat().filter(item => 
-                item.subject.includes(subject.split(' ')[0])
-              ).length;
-              
-              return (
-                <div key={subject} className="text-center p-3 bg-gray-50 rounded-lg">
-                  <div className="text-sm text-gray-600 mb-1">{subject}</div>
-                  <div className="text-xl font-bold">{totalClasses}</div>
-                  <div className="text-xs text-gray-500">classes/week</div>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+      {Object.keys(timetableData).some(day => timetableData[day].length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Schedule Overview</CardTitle>
+            <CardDescription>Subject-wise class distribution</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              {Array.from(new Set(
+                Object.values(timetableData).flat().map(item => item.subject)
+              )).map(subject => {
+                const totalClasses = Object.values(timetableData).flat().filter(item => 
+                  item.subject === subject
+                ).length;
+                
+                return (
+                  <div key={subject} className="text-center p-3 bg-gray-50 rounded-lg">
+                    <div className="text-sm text-gray-600 mb-1">{subject}</div>
+                    <div className="text-xl font-bold">{totalClasses}</div>
+                    <div className="text-xs text-gray-500">classes/week</div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
