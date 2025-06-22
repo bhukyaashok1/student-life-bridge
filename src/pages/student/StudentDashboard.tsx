@@ -2,40 +2,49 @@
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { useAuth } from '../../context/AuthContext';
-import { Student } from '../../types';
-import { Calendar, GraduationCap, BookOpen, Bell } from 'lucide-react';
+import { Calendar, BookOpen, Award, Bell, FileText, Clock } from 'lucide-react';
 
 export const StudentDashboard: React.FC = () => {
-  const { user } = useAuth();
-  const student = user as Student;
+  const { profile, studentData } = useAuth();
+
+  if (!profile || !studentData) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   const stats = [
     {
-      title: 'Overall Attendance',
-      value: '85%',
-      description: 'Current semester',
-      icon: Calendar,
-      color: 'text-blue-600',
-    },
-    {
-      title: 'Current SGPA',
-      value: student?.sgpa || '8.5',
-      description: 'Semester 5',
-      icon: GraduationCap,
+      title: 'Current CGPA',
+      value: studentData.cgpa.toString(),
+      description: 'Overall performance',
+      icon: Award,
       color: 'text-green-600',
     },
     {
-      title: 'CGPA',
-      value: student?.cgpa || '8.2',
-      description: 'Overall',
+      title: 'Current SGPA',
+      value: studentData.sgpa.toString(),
+      description: 'This semester',
       icon: BookOpen,
+      color: 'text-blue-600',
+    },
+    {
+      title: 'Year',
+      value: studentData.year.toString(),
+      description: `Semester ${studentData.semester}`,
+      icon: Calendar,
       color: 'text-purple-600',
     },
     {
-      title: 'Notifications',
-      value: '3',
-      description: 'Unread',
-      icon: Bell,
+      title: 'Branch',
+      value: studentData.branch,
+      description: `Section ${studentData.section}`,
+      icon: FileText,
       color: 'text-orange-600',
     },
   ];
@@ -43,8 +52,8 @@ export const StudentDashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600">Welcome back, {student?.name}!</p>
+        <h1 className="text-3xl font-bold text-gray-900">Welcome, {profile.full_name}!</h1>
+        <p className="text-gray-600">Roll Number: {studentData.roll_number}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -65,39 +74,65 @@ export const StudentDashboard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Recent Attendance</CardTitle>
-            <CardDescription>Last 7 days</CardDescription>
+            <CardTitle>Recent Notifications</CardTitle>
+            <CardDescription>Latest updates and announcements</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {['Math', 'Physics', 'Chemistry', 'English'].map((subject) => (
-                <div key={subject} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                  <span className="font-medium">{subject}</span>
-                  <span className="text-green-600 font-semibold">Present</span>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-3 p-2 bg-blue-50 rounded">
+                <Bell className="h-4 w-4 text-blue-600" />
+                <div>
+                  <p className="text-sm font-medium">Mid-term exam schedule released</p>
+                  <p className="text-xs text-gray-500">Check your timetable for details</p>
                 </div>
-              ))}
+              </div>
+              <div className="flex items-center space-x-3 p-2 bg-green-50 rounded">
+                <FileText className="h-4 w-4 text-green-600" />
+                <div>
+                  <p className="text-sm font-medium">Assignment submission reminder</p>
+                  <p className="text-xs text-gray-500">Due date: Tomorrow</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-3 p-2 bg-orange-50 rounded">
+                <Clock className="h-4 w-4 text-orange-600" />
+                <div>
+                  <p className="text-sm font-medium">Library hours extended</p>
+                  <p className="text-xs text-gray-500">Now open until 10 PM</p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Upcoming Events</CardTitle>
-            <CardDescription>Next 7 days</CardDescription>
+            <CardTitle>Quick Stats</CardTitle>
+            <CardDescription>Your academic overview</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div className="border-l-4 border-blue-500 pl-4">
-                <h4 className="font-semibold">Mid-term Exam - Mathematics</h4>
-                <p className="text-sm text-gray-600">Tomorrow, 10:00 AM</p>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Attendance Rate</span>
+                <span className="text-sm text-green-600 font-semibold">87%</span>
               </div>
-              <div className="border-l-4 border-green-500 pl-4">
-                <h4 className="font-semibold">Assignment Submission - Physics</h4>
-                <p className="text-sm text-gray-600">Friday, 5:00 PM</p>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="bg-green-600 h-2 rounded-full" style={{ width: '87%' }}></div>
               </div>
-              <div className="border-l-4 border-orange-500 pl-4">
-                <h4 className="font-semibold">Cultural Event</h4>
-                <p className="text-sm text-gray-600">Next Monday, 2:00 PM</p>
+              
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Assignments Completed</span>
+                <span className="text-sm text-blue-600 font-semibold">12/15</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="bg-blue-600 h-2 rounded-full" style={{ width: '80%' }}></div>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Course Progress</span>
+                <span className="text-sm text-purple-600 font-semibold">65%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="bg-purple-600 h-2 rounded-full" style={{ width: '65%' }}></div>
               </div>
             </div>
           </CardContent>

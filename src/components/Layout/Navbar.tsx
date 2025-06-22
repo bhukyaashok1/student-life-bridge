@@ -5,7 +5,7 @@ import { Button } from '../ui/button';
 import { Bell, User, LogOut } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { user, userType, logout } = useAuth();
+  const { profile, userType, signOut } = useAuth();
 
   return (
     <nav className="bg-white shadow-sm border-b px-6 py-4">
@@ -22,11 +22,11 @@ export const Navbar: React.FC = () => {
           <div className="flex items-center space-x-2">
             <User className="h-5 w-5 text-gray-600" />
             <span className="text-sm font-medium">
-              {user?.name} ({userType})
+              {profile?.full_name} ({userType})
             </span>
           </div>
           
-          <Button variant="outline" size="sm" onClick={logout}>
+          <Button variant="outline" size="sm" onClick={signOut}>
             <LogOut className="h-4 w-4 mr-2" />
             Logout
           </Button>

@@ -108,8 +108,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      setProfile(profileData);
-      setUserType(profileData.user_type);
+      setProfile(profileData as StudentProfile);
+      setUserType(profileData.user_type as 'student' | 'admin');
 
       // If student, fetch student data
       if (profileData.user_type === 'student') {
@@ -200,7 +200,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const mockAdminUser = {
         id: 'admin-user-id',
         email: ADMIN_EMAIL,
-        user_metadata: { user_type: 'admin' }
+        user_metadata: { user_type: 'admin' },
+        app_metadata: {},
+        aud: 'authenticated',
+        created_at: new Date().toISOString()
       } as User;
 
       const mockAdminProfile = {
