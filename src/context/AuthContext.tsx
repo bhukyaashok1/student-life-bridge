@@ -61,7 +61,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const ADMIN_PASSWORD = 'Ashoknayak7@';
 
   useEffect(() => {
-    // Set up auth state listener
+    // Check for admin session on load
+    const adminSession = localStorage.getItem('admin_session');
+    if (adminSession && !user) {
+      try {
+        const { user: adminUser, profile: adminProfile } = JSON.parse(adminSession);
+        setUser(adminUser);
+        setProfile(adminProfile);
+        setUserType('admin');
+        setLoading(false);
+        return;
+      } catch (error) {
+        localStorage.removeItem('admin_session');
+      }
+    }
+
+    // Set up auth state listener for regular users
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event, session);
@@ -92,7 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [user]);
 
   const fetchUserData = async (userId: string) => {
     try {
@@ -132,58 +147,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signUp = async (email: string, password: string, profileData: any, studentData: any) => {
     try {
-      const { data, error } = await supabase.auth.signUp({
+      // First, sign up the user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
-          data: {
-            full_name: profileData.full_name,
-            user_type: 'student'
-          }
         }
       });
 
-      if (error) return { error };
+      if (authError) {
+        console.error('Auth signup error:', authError);
+        return { error: authError };
+      }
 
-      if (data.user) {
-        // Create profile
-        const { data: newProfile, error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: data.user.id,
-            full_name: profileData.full_name,
-            email: profileData.email,
-            phone: profileData.phone,
-            address: profileData.address,
-            user_type: 'student'
-          })
-          .select()
-          .single();
+      if (!authData.user) {
+        return { error: { message: 'Failed to create user' } };
+      }
 
-        if (profileError) {
-          console.error('Profile creation error:', profileError);
-          return { error: profileError };
-        }
+      // Wait a moment for the user to be created
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // Create student data
-        const { error: studentError } = await supabase
-          .from('students')
-          .insert({
-            profile_id: newProfile.id,
-            roll_number: studentData.roll_number,
-            branch: studentData.branch,
-            section: studentData.section,
-            year: studentData.year,
-            semester: studentData.semester,
-            sgpa: studentData.sgpa || 0.00,
-            cgpa: studentData.cgpa || 0.00
-          });
+      // Create profile using the service role (bypass RLS)
+      const { data: newProfile, error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          user_id: authData.user.id,
+          full_name: profileData.full_name,
+          email: profileData.email,
+          phone: profileData.phone || null,
+          address: profileData.address || null,
+          user_type: 'student'
+        })
+        .select()
+        .single();
 
-        if (studentError) {
-          console.error('Student data creation error:', studentError);
-          return { error: studentError };
-        }
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        // If profile creation fails, we should clean up the auth user
+        await supabase.auth.signOut();
+        return { error: profileError };
+      }
+
+      // Create student data
+      const { error: studentError } = await supabase
+        .from('students')
+        .insert({
+          profile_id: newProfile.id,
+          roll_number: studentData.roll_number,
+          branch: studentData.branch,
+          section: studentData.section,
+          year: studentData.year,
+          semester: studentData.semester,
+          sgpa: studentData.sgpa || 0.00,
+          cgpa: studentData.cgpa || 0.00
+        });
+
+      if (studentError) {
+        console.error('Student data creation error:', studentError);
+        return { error: studentError };
       }
 
       return { error: null };
@@ -252,22 +274,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStudentData(null);
     setUserType(null);
   };
-
-  // Check for admin session on load
-  useEffect(() => {
-    const adminSession = localStorage.getItem('admin_session');
-    if (adminSession && !user) {
-      try {
-        const { user: adminUser, profile: adminProfile } = JSON.parse(adminSession);
-        setUser(adminUser);
-        setProfile(adminProfile);
-        setUserType('admin');
-        setLoading(false);
-      } catch (error) {
-        localStorage.removeItem('admin_session');
-      }
-    }
-  }, [user]);
 
   const value = {
     user,
