@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -10,11 +10,22 @@ import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 export const LoginForm: React.FC = () => {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, isAuthenticated, userType, loading } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('student-login');
-  const [loading, setLoading] = useState(false);
+  const [submitLoading, setSubmitLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated && !loading) {
+      if (userType === 'admin') {
+        navigate('/admin/dashboard');
+      } else if (userType === 'student') {
+        navigate('/student/dashboard');
+      }
+    }
+  }, [isAuthenticated, userType, loading, navigate]);
 
   // Student login form
   const [studentLoginData, setStudentLoginData] = useState({
@@ -30,14 +41,12 @@ export const LoginForm: React.FC = () => {
 
   // Student signup form
   const [studentSignupData, setStudentSignupData] = useState({
-    // Personal details
     full_name: '',
     email: '',
     password: '',
     confirmPassword: '',
     phone: '',
     address: '',
-    // Academic details
     roll_number: '',
     branch: '',
     section: '',
@@ -66,7 +75,6 @@ export const LoginForm: React.FC = () => {
   const validateStudentSignup = () => {
     const newErrors: Record<string, string> = {};
     
-    // Personal details validation
     if (!studentSignupData.full_name) newErrors.full_name = 'Full name is required';
     if (!studentSignupData.email) newErrors.email = 'Email is required';
     if (!studentSignupData.password || studentSignupData.password.length < 6) {
@@ -75,8 +83,6 @@ export const LoginForm: React.FC = () => {
     if (studentSignupData.password !== studentSignupData.confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
     }
-    
-    // Academic details validation
     if (!studentSignupData.roll_number) newErrors.roll_number = 'Roll number is required';
     if (!studentSignupData.branch) newErrors.branch = 'Branch is required';
     if (!studentSignupData.section) newErrors.section = 'Section is required';
@@ -91,70 +97,98 @@ export const LoginForm: React.FC = () => {
     e.preventDefault();
     if (!validateStudentLogin()) return;
 
-    setLoading(true);
-    const { error } = await signIn(studentLoginData.email, studentLoginData.password);
+    setSubmitLoading(true);
+    setErrors({});
     
-    if (error) {
-      setErrors({ submit: error.message });
-    } else {
-      navigate('/student/dashboard');
+    try {
+      const { error } = await signIn(studentLoginData.email, studentLoginData.password);
+      
+      if (error) {
+        setErrors({ submit: error.message });
+      }
+    } catch (error) {
+      setErrors({ submit: 'An unexpected error occurred' });
+    } finally {
+      setSubmitLoading(false);
     }
-    setLoading(false);
   };
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateAdminLogin()) return;
 
-    setLoading(true);
-    const { error } = await signIn(adminLoginData.email, adminLoginData.password);
+    setSubmitLoading(true);
+    setErrors({});
     
-    if (error) {
-      setErrors({ submit: 'Invalid admin credentials' });
-    } else {
-      navigate('/admin/dashboard');
+    try {
+      const { error } = await signIn(adminLoginData.email, adminLoginData.password);
+      
+      if (error) {
+        setErrors({ submit: 'Invalid admin credentials' });
+      }
+    } catch (error) {
+      setErrors({ submit: 'An unexpected error occurred' });
+    } finally {
+      setSubmitLoading(false);
     }
-    setLoading(false);
   };
 
   const handleStudentSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateStudentSignup()) return;
 
-    setLoading(true);
+    setSubmitLoading(true);
+    setErrors({});
     
-    const profileData = {
-      full_name: studentSignupData.full_name,
-      email: studentSignupData.email,
-      phone: studentSignupData.phone,
-      address: studentSignupData.address
-    };
+    try {
+      const profileData = {
+        full_name: studentSignupData.full_name,
+        email: studentSignupData.email,
+        phone: studentSignupData.phone,
+        address: studentSignupData.address
+      };
 
-    const academicData = {
-      roll_number: studentSignupData.roll_number,
-      branch: studentSignupData.branch,
-      section: studentSignupData.section,
-      year: studentSignupData.year,
-      semester: studentSignupData.semester,
-      sgpa: studentSignupData.sgpa,
-      cgpa: studentSignupData.cgpa
-    };
+      const academicData = {
+        roll_number: studentSignupData.roll_number,
+        branch: studentSignupData.branch,
+        section: studentSignupData.section,
+        year: studentSignupData.year,
+        semester: studentSignupData.semester,
+        sgpa: studentSignupData.sgpa,
+        cgpa: studentSignupData.cgpa
+      };
 
-    const { error } = await signUp(
-      studentSignupData.email,
-      studentSignupData.password,
-      profileData,
-      academicData
-    );
-    
-    if (error) {
-      setErrors({ submit: error.message });
-    } else {
-      alert('Registration successful! Please check your email to verify your account.');
-      setActiveTab('student-login');
+      const { error } = await signUp(
+        studentSignupData.email,
+        studentSignupData.password,
+        profileData,
+        academicData
+      );
+      
+      if (error) {
+        setErrors({ submit: error.message });
+      } else {
+        alert('Registration successful! Please check your email to verify your account.');
+        setActiveTab('student-login');
+      }
+    } catch (error) {
+      setErrors({ submit: 'An unexpected error occurred' });
+    } finally {
+      setSubmitLoading(false);
     }
-    setLoading(false);
   };
+
+  // Show loading while auth is initializing
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -183,6 +217,7 @@ export const LoginForm: React.FC = () => {
                     value={studentLoginData.email}
                     onChange={(e) => setStudentLoginData({ ...studentLoginData, email: e.target.value })}
                     placeholder="Enter your email"
+                    disabled={submitLoading}
                   />
                   {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email}</p>}
                 </div>
@@ -195,14 +230,15 @@ export const LoginForm: React.FC = () => {
                     value={studentLoginData.password}
                     onChange={(e) => setStudentLoginData({ ...studentLoginData, password: e.target.value })}
                     placeholder="Enter your password"
+                    disabled={submitLoading}
                   />
                   {errors.password && <p className="text-sm text-red-600 mt-1">{errors.password}</p>}
                 </div>
                 
                 {errors.submit && <p className="text-sm text-red-600">{errors.submit}</p>}
                 
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Signing In...' : 'Sign In as Student'}
+                <Button type="submit" className="w-full" disabled={submitLoading}>
+                  {submitLoading ? 'Signing In...' : 'Sign In as Student'}
                 </Button>
               </form>
             </TabsContent>
@@ -217,6 +253,7 @@ export const LoginForm: React.FC = () => {
                       value={studentSignupData.full_name}
                       onChange={(e) => setStudentSignupData({ ...studentSignupData, full_name: e.target.value })}
                       placeholder="Enter your full name"
+                      disabled={submitLoading}
                     />
                     {errors.full_name && <p className="text-sm text-red-600 mt-1">{errors.full_name}</p>}
                   </div>
@@ -229,6 +266,7 @@ export const LoginForm: React.FC = () => {
                       value={studentSignupData.email}
                       onChange={(e) => setStudentSignupData({ ...studentSignupData, email: e.target.value })}
                       placeholder="Enter your email"
+                      disabled={submitLoading}
                     />
                     {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email}</p>}
                   </div>
@@ -241,6 +279,7 @@ export const LoginForm: React.FC = () => {
                       value={studentSignupData.password}
                       onChange={(e) => setStudentSignupData({ ...studentSignupData, password: e.target.value })}
                       placeholder="Enter your password"
+                      disabled={submitLoading}
                     />
                     {errors.password && <p className="text-sm text-red-600 mt-1">{errors.password}</p>}
                   </div>
@@ -253,6 +292,7 @@ export const LoginForm: React.FC = () => {
                       value={studentSignupData.confirmPassword}
                       onChange={(e) => setStudentSignupData({ ...studentSignupData, confirmPassword: e.target.value })}
                       placeholder="Confirm your password"
+                      disabled={submitLoading}
                     />
                     {errors.confirmPassword && <p className="text-sm text-red-600 mt-1">{errors.confirmPassword}</p>}
                   </div>
@@ -264,6 +304,7 @@ export const LoginForm: React.FC = () => {
                       value={studentSignupData.phone}
                       onChange={(e) => setStudentSignupData({ ...studentSignupData, phone: e.target.value })}
                       placeholder="Enter your phone number"
+                      disabled={submitLoading}
                     />
                   </div>
                   
@@ -274,13 +315,18 @@ export const LoginForm: React.FC = () => {
                       value={studentSignupData.roll_number}
                       onChange={(e) => setStudentSignupData({ ...studentSignupData, roll_number: e.target.value })}
                       placeholder="Enter your roll number"
+                      disabled={submitLoading}
                     />
                     {errors.roll_number && <p className="text-sm text-red-600 mt-1">{errors.roll_number}</p>}
                   </div>
                   
                   <div>
                     <Label htmlFor="branch">Branch</Label>
-                    <Select value={studentSignupData.branch} onValueChange={(value) => setStudentSignupData({ ...studentSignupData, branch: value })}>
+                    <Select 
+                      value={studentSignupData.branch} 
+                      onValueChange={(value) => setStudentSignupData({ ...studentSignupData, branch: value })}
+                      disabled={submitLoading}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select Branch" />
                       </SelectTrigger>
@@ -297,7 +343,11 @@ export const LoginForm: React.FC = () => {
                   
                   <div>
                     <Label htmlFor="section">Section</Label>
-                    <Select value={studentSignupData.section} onValueChange={(value) => setStudentSignupData({ ...studentSignupData, section: value })}>
+                    <Select 
+                      value={studentSignupData.section} 
+                      onValueChange={(value) => setStudentSignupData({ ...studentSignupData, section: value })}
+                      disabled={submitLoading}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select Section" />
                       </SelectTrigger>
@@ -312,7 +362,11 @@ export const LoginForm: React.FC = () => {
                   
                   <div>
                     <Label htmlFor="year">Year</Label>
-                    <Select value={studentSignupData.year.toString()} onValueChange={(value) => setStudentSignupData({ ...studentSignupData, year: parseInt(value) })}>
+                    <Select 
+                      value={studentSignupData.year.toString()} 
+                      onValueChange={(value) => setStudentSignupData({ ...studentSignupData, year: parseInt(value) })}
+                      disabled={submitLoading}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select Year" />
                       </SelectTrigger>
@@ -328,7 +382,11 @@ export const LoginForm: React.FC = () => {
                   
                   <div>
                     <Label htmlFor="semester">Semester</Label>
-                    <Select value={studentSignupData.semester.toString()} onValueChange={(value) => setStudentSignupData({ ...studentSignupData, semester: parseInt(value) })}>
+                    <Select 
+                      value={studentSignupData.semester.toString()} 
+                      onValueChange={(value) => setStudentSignupData({ ...studentSignupData, semester: parseInt(value) })}
+                      disabled={submitLoading}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select Semester" />
                       </SelectTrigger>
@@ -354,13 +412,14 @@ export const LoginForm: React.FC = () => {
                     value={studentSignupData.address}
                     onChange={(e) => setStudentSignupData({ ...studentSignupData, address: e.target.value })}
                     placeholder="Enter your address"
+                    disabled={submitLoading}
                   />
                 </div>
                 
                 {errors.submit && <p className="text-sm text-red-600">{errors.submit}</p>}
                 
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Creating Account...' : 'Create Student Account'}
+                <Button type="submit" className="w-full" disabled={submitLoading}>
+                  {submitLoading ? 'Creating Account...' : 'Create Student Account'}
                 </Button>
               </form>
             </TabsContent>
@@ -375,6 +434,7 @@ export const LoginForm: React.FC = () => {
                     value={adminLoginData.email}
                     onChange={(e) => setAdminLoginData({ ...adminLoginData, email: e.target.value })}
                     placeholder="Enter admin email"
+                    disabled={submitLoading}
                   />
                   {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email}</p>}
                 </div>
@@ -387,14 +447,15 @@ export const LoginForm: React.FC = () => {
                     value={adminLoginData.password}
                     onChange={(e) => setAdminLoginData({ ...adminLoginData, password: e.target.value })}
                     placeholder="Enter admin password"
+                    disabled={submitLoading}
                   />
                   {errors.password && <p className="text-sm text-red-600 mt-1">{errors.password}</p>}
                 </div>
                 
                 {errors.submit && <p className="text-sm text-red-600">{errors.submit}</p>}
                 
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Signing In...' : 'Sign In as Admin'}
+                <Button type="submit" className="w-full" disabled={submitLoading}>
+                  {submitLoading ? 'Signing In...' : 'Sign In as Admin'}
                 </Button>
               </form>
             </TabsContent>

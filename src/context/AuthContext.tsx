@@ -55,62 +55,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [studentData, setStudentData] = useState<StudentData | null>(null);
   const [userType, setUserType] = useState<'student' | 'admin' | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   // Hardcoded admin credentials
   const ADMIN_EMAIL = 'bhukyaashoknayak87@gmail.com';
   const ADMIN_PASSWORD = 'Ashoknayak7@';
 
-  useEffect(() => {
-    // Check for admin session on load
-    const adminSession = localStorage.getItem('admin_session');
-    if (adminSession && !user) {
-      try {
-        const { user: adminUser, profile: adminProfile } = JSON.parse(adminSession);
-        setUser(adminUser);
-        setProfile(adminProfile);
-        setUserType('admin');
-        setLoading(false);
-        return;
-      } catch (error) {
-        localStorage.removeItem('admin_session');
-      }
-    }
-
-    // Set up auth state listener for regular users
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session);
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          // Fetch user profile and student data
-          await fetchUserData(session.user.id);
-        } else {
-          setProfile(null);
-          setStudentData(null);
-          setUserType(null);
-        }
-        setLoading(false);
-      }
-    );
-
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserData(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [user]);
-
   const fetchUserData = async (userId: string) => {
     try {
+      console.log('Fetching user data for:', userId);
+      
       // Fetch profile
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
@@ -123,6 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      console.log('Profile data:', profileData);
       setProfile(profileData as StudentProfile);
       setUserType(profileData.user_type as 'student' | 'admin');
 
@@ -137,6 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (studentError) {
           console.error('Error fetching student data:', studentError);
         } else {
+          console.log('Student data:', studentInfo);
           setStudentData(studentInfo);
         }
       }
@@ -145,8 +101,89 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  useEffect(() => {
+    if (initialized) return;
+
+    const initializeAuth = async () => {
+      try {
+        console.log('Initializing auth...');
+        
+        // Check for admin session first
+        const adminSession = localStorage.getItem('admin_session');
+        if (adminSession) {
+          try {
+            const { user: adminUser, profile: adminProfile } = JSON.parse(adminSession);
+            setUser(adminUser);
+            setProfile(adminProfile);
+            setUserType('admin');
+            setLoading(false);
+            setInitialized(true);
+            return;
+          } catch (error) {
+            console.error('Invalid admin session, removing:', error);
+            localStorage.removeItem('admin_session');
+          }
+        }
+
+        // Check for existing Supabase session
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        console.log('Current session:', currentSession);
+        
+        if (currentSession) {
+          setSession(currentSession);
+          setUser(currentSession.user);
+          await fetchUserData(currentSession.user.id);
+        }
+        
+        setLoading(false);
+        setInitialized(true);
+      } catch (error) {
+        console.error('Error initializing auth:', error);
+        setLoading(false);
+        setInitialized(true);
+      }
+    };
+
+    initializeAuth();
+  }, [initialized]);
+
+  useEffect(() => {
+    if (!initialized) return;
+
+    console.log('Setting up auth state listener...');
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event, session);
+        
+        // Skip if this is an admin session
+        if (userType === 'admin') {
+          return;
+        }
+        
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (session?.user && event !== 'SIGNED_OUT') {
+          await fetchUserData(session.user.id);
+        } else {
+          setProfile(null);
+          setStudentData(null);
+          setUserType(null);
+        }
+      }
+    );
+
+    return () => {
+      console.log('Cleaning up auth listener');
+      subscription.unsubscribe();
+    };
+  }, [initialized, userType]);
+
   const signUp = async (email: string, password: string, profileData: any, studentData: any) => {
     try {
+      console.log('Starting signup process...');
+      
       // First, sign up the user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -165,10 +202,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: { message: 'Failed to create user' } };
       }
 
-      // Wait a moment for the user to be created
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log('User created, now creating profile...');
 
-      // Create profile using the service role (bypass RLS)
+      // Wait for user to be fully created
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Create profile
       const { data: newProfile, error: profileError } = await supabase
         .from('profiles')
         .insert({
@@ -184,10 +223,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (profileError) {
         console.error('Profile creation error:', profileError);
-        // If profile creation fails, we should clean up the auth user
-        await supabase.auth.signOut();
         return { error: profileError };
       }
+
+      console.log('Profile created, now creating student data...');
 
       // Create student data
       const { error: studentError } = await supabase
@@ -208,6 +247,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: studentError };
       }
 
+      console.log('Signup completed successfully');
       return { error: null };
     } catch (error) {
       console.error('Signup error:', error);
@@ -216,63 +256,87 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signIn = async (email: string, password: string) => {
-    // Check if it's admin login
-    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-      // Create a mock admin session
-      const mockAdminUser = {
-        id: 'admin-user-id',
-        email: ADMIN_EMAIL,
-        user_metadata: { user_type: 'admin' },
-        app_metadata: {},
-        aud: 'authenticated',
-        created_at: new Date().toISOString()
-      } as User;
-
-      const mockAdminProfile = {
-        id: 'admin-profile-id',
-        user_id: 'admin-user-id',
-        full_name: 'Admin User',
-        email: ADMIN_EMAIL,
-        user_type: 'admin' as const
-      };
-
-      setUser(mockAdminUser);
-      setProfile(mockAdminProfile);
-      setUserType('admin');
-      setStudentData(null);
+    try {
+      console.log('Attempting sign in for:', email);
       
-      // Store admin session in localStorage
-      localStorage.setItem('admin_session', JSON.stringify({
-        user: mockAdminUser,
-        profile: mockAdminProfile
-      }));
+      // Check if it's admin login
+      if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+        console.log('Admin login detected');
+        
+        // Create a mock admin session
+        const mockAdminUser = {
+          id: 'admin-user-id',
+          email: ADMIN_EMAIL,
+          user_metadata: { user_type: 'admin' },
+          app_metadata: {},
+          aud: 'authenticated',
+          created_at: new Date().toISOString()
+        } as User;
 
+        const mockAdminProfile = {
+          id: 'admin-profile-id',
+          user_id: 'admin-user-id',
+          full_name: 'Admin User',
+          email: ADMIN_EMAIL,
+          user_type: 'admin' as const
+        };
+
+        setUser(mockAdminUser);
+        setProfile(mockAdminProfile);
+        setUserType('admin');
+        setStudentData(null);
+        
+        // Store admin session in localStorage
+        localStorage.setItem('admin_session', JSON.stringify({
+          user: mockAdminUser,
+          profile: mockAdminProfile
+        }));
+
+        console.log('Admin login successful');
+        return { error: null };
+      }
+
+      // Regular student login
+      console.log('Student login attempt');
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        console.error('Student login error:', error);
+        return { error };
+      }
+
+      console.log('Student login successful');
       return { error: null };
+    } catch (error) {
+      console.error('Sign in error:', error);
+      return { error };
     }
-
-    // Regular student login
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-
-    if (error) return { error };
-
-    return { error: null };
   };
 
   const signOut = async () => {
-    // Clear admin session if exists
-    localStorage.removeItem('admin_session');
-    
-    // Sign out from Supabase
-    await supabase.auth.signOut();
-    
-    setUser(null);
-    setSession(null);
-    setProfile(null);
-    setStudentData(null);
-    setUserType(null);
+    try {
+      console.log('Signing out...');
+      
+      // Clear admin session if exists
+      localStorage.removeItem('admin_session');
+      
+      // Sign out from Supabase
+      await supabase.auth.signOut();
+      
+      // Reset all state
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+      setStudentData(null);
+      setUserType(null);
+      
+      console.log('Sign out completed');
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
   };
 
   const value = {
