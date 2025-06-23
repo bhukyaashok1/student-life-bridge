@@ -1,31 +1,89 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { GraduationCap, TrendingUp, Award } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../integrations/supabase/client';
+
+interface StudentMark {
+  id: string;
+  subject: string;
+  mid1: number;
+  mid2: number;
+  assignment: number;
+  total: number;
+  semester: number;
+}
 
 export const StudentMarks: React.FC = () => {
-  const [selectedSemester, setSelectedSemester] = useState('5');
+  const { studentData } = useAuth();
+  const [selectedSemester, setSelectedSemester] = useState('');
+  const [marks, setMarks] = useState<StudentMark[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const marksData = {
-    semester5: [
-      { subject: 'Mathematics', mid1: 85, mid2: 90, assignment: 88, endExam: 87, total: 87.5 },
-      { subject: 'Physics', mid1: 78, mid2: 82, assignment: 85, endExam: 80, total: 81.25 },
-      { subject: 'Chemistry', mid1: 92, mid2: 88, assignment: 90, endExam: 91, total: 90.25 },
-      { subject: 'English', mid1: 88, mid2: 85, assignment: 87, endExam: 86, total: 86.5 },
-      { subject: 'Computer Science', mid1: 95, mid2: 93, assignment: 96, endExam: 94, total: 94.5 },
-    ],
-    currentSGPA: 8.5,
-    overallCGPA: 8.2
+  useEffect(() => {
+    if (studentData) {
+      setSelectedSemester(studentData.semester.toString());
+      fetchMarks();
+    }
+  }, [studentData]);
+
+  useEffect(() => {
+    if (studentData && selectedSemester) {
+      fetchMarks();
+    }
+  }, [selectedSemester, studentData]);
+
+  const fetchMarks = async () => {
+    if (!studentData) return;
+
+    try {
+      setLoading(true);
+      
+      // Fetch marks for the student
+      const { data: marksData, error: marksError } = await supabase
+        .from('marks')
+        .select('*')
+        .eq('student_id', studentData.id)
+        .eq('semester', selectedSemester ? parseInt(selectedSemester) : studentData.semester)
+        .order('subject');
+
+      if (marksError) {
+        console.error('Error fetching marks:', marksError);
+        return;
+      }
+
+      console.log('Fetched marks data:', marksData);
+      setMarks(marksData || []);
+    } catch (error) {
+      console.error('Error in fetchMarks:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const semesterHistory = [
-    { semester: 1, sgpa: 7.8 },
-    { semester: 2, sgpa: 8.0 },
-    { semester: 3, sgpa: 8.1 },
-    { semester: 4, sgpa: 8.3 },
-    { semester: 5, sgpa: 8.5 },
-  ];
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Marks & Grades</h1>
+          <p className="text-gray-600">Loading your academic performance...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!studentData) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Marks & Grades</h1>
+          <p className="text-gray-600">Please complete your profile to view marks</p>
+        </div>
+      </div>
+    );
+  }
 
   const getGradeColor = (marks: number) => {
     if (marks >= 90) return 'text-green-600';
@@ -42,6 +100,13 @@ export const StudentMarks: React.FC = () => {
     return 'F';
   };
 
+  const currentSemesterMarks = marks.filter(mark => mark.semester === parseInt(selectedSemester));
+  const currentSGPA = currentSemesterMarks.length > 0 
+    ? Math.round((currentSemesterMarks.reduce((sum, mark) => sum + mark.total, 0) / currentSemesterMarks.length) * 100) / 100
+    : studentData.sgpa;
+
+  const semesters = Array.from({ length: 8 }, (_, i) => (i + 1).toString());
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -54,11 +119,9 @@ export const StudentMarks: React.FC = () => {
             <SelectValue placeholder="Select Semester" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="1">Semester 1</SelectItem>
-            <SelectItem value="2">Semester 2</SelectItem>
-            <SelectItem value="3">Semester 3</SelectItem>
-            <SelectItem value="4">Semester 4</SelectItem>
-            <SelectItem value="5">Semester 5</SelectItem>
+            {semesters.map(sem => (
+              <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -70,7 +133,7 @@ export const StudentMarks: React.FC = () => {
             <GraduationCap className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{marksData.currentSGPA}</div>
+            <div className="text-2xl font-bold text-blue-600">{currentSGPA}</div>
             <p className="text-xs text-muted-foreground">Semester {selectedSemester}</p>
           </CardContent>
         </Card>
@@ -81,19 +144,19 @@ export const StudentMarks: React.FC = () => {
             <Award className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{marksData.overallCGPA}</div>
+            <div className="text-2xl font-bold text-green-600">{studentData.cgpa}</div>
             <p className="text-xs text-muted-foreground">Cumulative</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Trend</CardTitle>
+            <CardTitle className="text-sm font-medium">Subjects</CardTitle>
             <TrendingUp className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-600">↗ +0.2</div>
-            <p className="text-xs text-muted-foreground">From last semester</p>
+            <div className="text-2xl font-bold text-purple-600">{currentSemesterMarks.length}</div>
+            <p className="text-xs text-muted-foreground">This semester</p>
           </CardContent>
         </Card>
       </div>
@@ -104,54 +167,90 @@ export const StudentMarks: React.FC = () => {
           <CardDescription>Detailed breakdown of your marks for each subject</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-3 font-medium">Subject</th>
-                  <th className="text-center p-3 font-medium">Mid-1</th>
-                  <th className="text-center p-3 font-medium">Mid-2</th>
-                  <th className="text-center p-3 font-medium">Assignment</th>
-                  <th className="text-center p-3 font-medium">End Exam</th>
-                  <th className="text-center p-3 font-medium">Total</th>
-                  <th className="text-center p-3 font-medium">Grade</th>
-                </tr>
-              </thead>
-              <tbody>
-                {marksData.semester5.map((subject, index) => (
-                  <tr key={index} className="border-b hover:bg-gray-50">
-                    <td className="p-3 font-medium">{subject.subject}</td>
-                    <td className="text-center p-3">{subject.mid1}</td>
-                    <td className="text-center p-3">{subject.mid2}</td>
-                    <td className="text-center p-3">{subject.assignment}</td>
-                    <td className="text-center p-3">{subject.endExam}</td>
-                    <td className={`text-center p-3 font-bold ${getGradeColor(subject.total)}`}>
-                      {subject.total}
-                    </td>
-                    <td className={`text-center p-3 font-bold ${getGradeColor(subject.total)}`}>
-                      {getGradeLetter(subject.total)}
-                    </td>
+          {currentSemesterMarks.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-3 font-medium">Subject</th>
+                    <th className="text-center p-3 font-medium">Mid-1</th>
+                    <th className="text-center p-3 font-medium">Mid-2</th>
+                    <th className="text-center p-3 font-medium">Assignment</th>
+                    <th className="text-center p-3 font-medium">Total</th>
+                    <th className="text-center p-3 font-medium">Grade</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {currentSemesterMarks.map((mark) => (
+                    <tr key={mark.id} className="border-b hover:bg-gray-50">
+                      <td className="p-3 font-medium">{mark.subject}</td>
+                      <td className="text-center p-3">{mark.mid1}</td>
+                      <td className="text-center p-3">{mark.mid2}</td>
+                      <td className="text-center p-3">{mark.assignment}</td>
+                      <td className={`text-center p-3 font-bold ${getGradeColor(mark.total)}`}>
+                        {mark.total}
+                      </td>
+                      <td className={`text-center p-3 font-bold ${getGradeColor(mark.total)}`}>
+                        {getGradeLetter(mark.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-500">No marks available for Semester {selectedSemester}</p>
+              <p className="text-sm text-gray-400 mt-2">
+                Marks will appear here once they are entered by your instructors
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>SGPA History</CardTitle>
-          <CardDescription>Your semester-wise academic performance</CardDescription>
+          <CardTitle>Academic Overview</CardTitle>
+          <CardDescription>Your overall academic performance</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {semesterHistory.map((sem) => (
-              <div key={sem.semester} className="text-center p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-600 mb-1">Semester {sem.semester}</div>
-                <div className="text-xl font-bold text-blue-600">{sem.sgpa}</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h4 className="font-medium mb-3">Current Semester Performance</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm">Semester:</span>
+                  <span className="text-sm font-medium">{selectedSemester}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">SGPA:</span>
+                  <span className="text-sm font-medium">{currentSGPA}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">Subjects:</span>
+                  <span className="text-sm font-medium">{currentSemesterMarks.length}</span>
+                </div>
               </div>
-            ))}
+            </div>
+            
+            <div>
+              <h4 className="font-medium mb-3">Overall Performance</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm">Year:</span>
+                  <span className="text-sm font-medium">{studentData.year}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">CGPA:</span>
+                  <span className="text-sm font-medium">{studentData.cgpa}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">Branch:</span>
+                  <span className="text-sm font-medium">{studentData.branch}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

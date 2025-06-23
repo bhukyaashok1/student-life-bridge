@@ -4,212 +4,155 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { GraduationCap, Users, TrendingUp, Save } from 'lucide-react';
+import { GraduationCap, Save, Users } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
 import { useToast } from '../../components/ui/use-toast';
 
-interface Student {
-  id: string;
-  roll_number: string;
-  profiles: {
-    full_name: string;
-  };
-}
-
-interface Mark {
+interface StudentMark {
   student_id: string;
+  student_name: string;
+  roll_number: string;
+  subject: string;
   mid1: number;
   mid2: number;
   assignment: number;
   total: number;
 }
 
+interface Subject {
+  name: string;
+}
+
 export const AdminMarks: React.FC = () => {
   const [selectedBranch, setSelectedBranch] = useState('Computer Science');
-  const [selectedYear, setSelectedYear] = useState('3');
-  const [selectedSemester, setSelectedSemester] = useState('5');
-  const [selectedSubject, setSelectedSubject] = useState('Mathematics');
-  const [students, setStudents] = useState<Student[]>([]);
-  const [subjects, setSubjects] = useState<string[]>([]);
-  const [marks, setMarks] = useState<Record<string, Mark>>({});
+  const [selectedYear, setSelectedYear] = useState('1');
+  const [selectedSemester, setSelectedSemester] = useState('1');
+  const [selectedSection, setSelectedSection] = useState('A');
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [students, setStudents] = useState<StudentMark[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
+  const branches = ['Computer Science', 'Electronics', 'Mechanical', 'Civil'];
+  const years = ['1', '2', '3', '4'];
+  const semesters = ['1', '2', '3', '4', '5', '6', '7', '8'];
+  const sections = ['A', 'B', 'C', 'D'];
+
   useEffect(() => {
-    fetchStudents();
-    fetchSubjects();
+    if (selectedBranch && selectedYear && selectedSemester) {
+      fetchSubjects();
+    }
   }, [selectedBranch, selectedYear, selectedSemester]);
 
   useEffect(() => {
-    fetchMarks();
-  }, [selectedBranch, selectedYear, selectedSemester, selectedSubject]);
-
-  const fetchStudents = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('students')
-        .select(`
-          id,
-          roll_number,
-          profiles:profile_id (
-            full_name
-          )
-        `)
-        .eq('branch', selectedBranch)
-        .eq('year', parseInt(selectedYear))
-        .eq('semester', parseInt(selectedSemester))
-        .order('roll_number');
-
-      if (error) {
-        console.error('Error fetching students:', error);
-        return;
-      }
-
-      setStudents(data || []);
-    } catch (error) {
-      console.error('Error in fetchStudents:', error);
+    if (selectedBranch && selectedYear && selectedSemester && selectedSection && selectedSubject) {
+      fetchStudentMarks();
     }
-  };
+  }, [selectedBranch, selectedYear, selectedSemester, selectedSection, selectedSubject]);
 
   const fetchSubjects = async () => {
     try {
-      const { data, error } = await supabase
-        .rpc('get_subjects_for_class', {
-          p_branch: selectedBranch,
-          p_year: parseInt(selectedYear),
-          p_semester: parseInt(selectedSemester)
-        });
+      const { data, error } = await supabase.rpc('get_subjects_for_class', {
+        p_branch: selectedBranch,
+        p_year: parseInt(selectedYear),
+        p_semester: parseInt(selectedSemester)
+      });
 
       if (error) {
         console.error('Error fetching subjects:', error);
-        // Fallback to default subjects
-        setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
+        toast({
+          title: "Error",
+          description: "Failed to fetch subjects",
+          variant: "destructive",
+        });
         return;
       }
 
-      const subjectNames = data?.map((s: any) => s.name) || ['Mathematics', 'Physics', 'Chemistry'];
-      setSubjects(subjectNames);
-      
-      if (subjectNames.length > 0 && !subjectNames.includes(selectedSubject)) {
-        setSelectedSubject(subjectNames[0]);
+      setSubjects(data || []);
+      if (data && data.length > 0 && !selectedSubject) {
+        setSelectedSubject(data[0].name);
       }
     } catch (error) {
       console.error('Error in fetchSubjects:', error);
-      // Fallback to default subjects
-      setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
     }
   };
 
-  const fetchMarks = async () => {
+  const fetchStudentMarks = async () => {
+    setLoading(true);
     try {
-      const { data, error } = await supabase
-        .rpc('get_student_marks', {
-          p_branch: selectedBranch,
-          p_year: parseInt(selectedYear),
-          p_semester: parseInt(selectedSemester),
-          p_section: 'A',
-          p_subject: selectedSubject
-        });
+      const { data, error } = await supabase.rpc('get_student_marks', {
+        p_branch: selectedBranch,
+        p_year: parseInt(selectedYear),
+        p_semester: parseInt(selectedSemester),
+        p_section: selectedSection,
+        p_subject: selectedSubject
+      });
 
       if (error) {
-        console.error('Error fetching marks:', error);
-        // Initialize empty marks if fetch fails
-        const marksMap: Record<string, Mark> = {};
-        students.forEach(student => {
-          marksMap[student.id] = {
-            student_id: student.id,
-            mid1: 0,
-            mid2: 0,
-            assignment: 0,
-            total: 0
-          };
+        console.error('Error fetching student marks:', error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch student marks",
+          variant: "destructive",
         });
-        setMarks(marksMap);
         return;
       }
 
-      const marksMap: Record<string, Mark> = {};
-      students.forEach(student => {
-        const mark = data?.find((m: any) => m.student_id === student.id);
-        marksMap[student.id] = {
-          student_id: student.id,
-          mid1: mark?.mid1 || 0,
-          mid2: mark?.mid2 || 0,
-          assignment: mark?.assignment || 0,
-          total: mark?.total || 0
-        };
-      });
-      
-      setMarks(marksMap);
+      console.log('Fetched student marks:', data);
+      setStudents(data || []);
     } catch (error) {
-      console.error('Error in fetchMarks:', error);
-      // Initialize empty marks if fetch fails
-      const marksMap: Record<string, Mark> = {};
-      students.forEach(student => {
-        marksMap[student.id] = {
-          student_id: student.id,
-          mid1: 0,
-          mid2: 0,
-          assignment: 0,
-          total: 0
-        };
-      });
-      setMarks(marksMap);
+      console.error('Error in fetchStudentMarks:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const updateMark = (studentId: string, field: string, value: number) => {
-    setMarks(prev => ({
-      ...prev,
-      [studentId]: {
-        ...prev[studentId],
-        [field]: value
+  const updateStudentMark = (studentId: string, field: 'mid1' | 'mid2' | 'assignment', value: string) => {
+    const numValue = parseFloat(value) || 0;
+    setStudents(prev => prev.map(student => {
+      if (student.student_id === studentId) {
+        const updated = { ...student, [field]: numValue };
+        // Recalculate total
+        updated.total = Math.round(((updated.mid1 + updated.mid2 + updated.assignment) / 3) * 100) / 100;
+        return updated;
       }
+      return student;
     }));
   };
 
-  const calculateTotal = (studentId: string) => {
-    const studentMarks = marks[studentId];
-    if (!studentMarks) return 0;
-    return ((studentMarks.mid1 + studentMarks.mid2 + studentMarks.assignment) / 3).toFixed(1);
-  };
-
-  const getGrade = (total: number) => {
-    if (total >= 90) return 'A+';
-    if (total >= 80) return 'A';
-    if (total >= 70) return 'B';
-    if (total >= 60) return 'C';
-    return 'F';
-  };
-
   const saveMarks = async () => {
-    setLoading(true);
+    setSaving(true);
     try {
-      for (const mark of Object.values(marks)) {
-        const { error } = await supabase
-          .rpc('save_student_marks', {
-            p_student_id: mark.student_id,
-            p_subject: selectedSubject,
-            p_branch: selectedBranch,
-            p_year: parseInt(selectedYear),
-            p_semester: parseInt(selectedSemester),
-            p_section: 'A',
-            p_mid1: mark.mid1,
-            p_mid2: mark.mid2,
-            p_assignment: mark.assignment
-          });
+      for (const student of students) {
+        const { error } = await supabase.rpc('save_student_marks', {
+          p_student_id: student.student_id,
+          p_subject: selectedSubject,
+          p_branch: selectedBranch,
+          p_year: parseInt(selectedYear),
+          p_semester: parseInt(selectedSemester),
+          p_section: selectedSection,
+          p_mid1: student.mid1,
+          p_mid2: student.mid2,
+          p_assignment: student.assignment
+        });
 
         if (error) {
-          console.error('Error saving marks for student:', mark.student_id, error);
+          console.error('Error saving marks for student:', student.student_id, error);
+          toast({
+            title: "Error",
+            description: `Failed to save marks for ${student.student_name}`,
+            variant: "destructive",
+          });
+          return;
         }
       }
 
       toast({
         title: "Success",
-        description: "Marks saved successfully",
+        description: "All marks saved successfully",
       });
-      
-      fetchMarks(); // Refresh to get updated totals
     } catch (error) {
       console.error('Error in saveMarks:', error);
       toast({
@@ -218,37 +161,88 @@ export const AdminMarks: React.FC = () => {
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const classAverage = students.length > 0 
-    ? students.reduce((sum, student) => sum + parseFloat(calculateTotal(student.id)), 0) / students.length
+  const getGradeColor = (marks: number) => {
+    if (marks >= 90) return 'text-green-600';
+    if (marks >= 80) return 'text-blue-600';
+    if (marks >= 70) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getGradeLetter = (marks: number) => {
+    if (marks >= 90) return 'A+';
+    if (marks >= 80) return 'A';
+    if (marks >= 70) return 'B';
+    if (marks >= 60) return 'C';
+    return 'F';
+  };
+
+  const averageMarks = students.length > 0 
+    ? Math.round((students.reduce((sum, s) => sum + s.total, 0) / students.length) * 100) / 100
     : 0;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Marks Management</h1>
-        <p className="text-gray-600">Enter and manage student marks for various assessments</p>
+        <p className="text-gray-600">Manage and view student marks and grades</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
+            <Users className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{students.length}</div>
+            <p className="text-xs text-muted-foreground">In selected class</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Average Marks</CardTitle>
+            <GraduationCap className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${getGradeColor(averageMarks)}`}>
+              {averageMarks.toString()}
+            </div>
+            <p className="text-xs text-muted-foreground">Class average</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Subject</CardTitle>
+            <GraduationCap className="h-4 w-4 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{selectedSubject || 'None'}</div>
+            <p className="text-xs text-muted-foreground">Selected subject</p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Select Class & Subject</CardTitle>
-          <CardDescription>Choose the class and subject for marks entry</CardDescription>
+          <CardTitle>Filter Students</CardTitle>
+          <CardDescription>Select class and subject to manage marks</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
             <Select value={selectedBranch} onValueChange={setSelectedBranch}>
               <SelectTrigger>
                 <SelectValue placeholder="Branch" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Computer Science">Computer Science</SelectItem>
-                <SelectItem value="Electronics">Electronics</SelectItem>
-                <SelectItem value="Mechanical">Mechanical</SelectItem>
-                <SelectItem value="Civil">Civil</SelectItem>
+                {branches.map(branch => (
+                  <SelectItem key={branch} value={branch}>{branch}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -257,10 +251,9 @@ export const AdminMarks: React.FC = () => {
                 <SelectValue placeholder="Year" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1">Year 1</SelectItem>
-                <SelectItem value="2">Year 2</SelectItem>
-                <SelectItem value="3">Year 3</SelectItem>
-                <SelectItem value="4">Year 4</SelectItem>
+                {years.map(year => (
+                  <SelectItem key={year} value={year}>Year {year}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -269,14 +262,20 @@ export const AdminMarks: React.FC = () => {
                 <SelectValue placeholder="Semester" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1">Semester 1</SelectItem>
-                <SelectItem value="2">Semester 2</SelectItem>
-                <SelectItem value="3">Semester 3</SelectItem>
-                <SelectItem value="4">Semester 4</SelectItem>
-                <SelectItem value="5">Semester 5</SelectItem>
-                <SelectItem value="6">Semester 6</SelectItem>
-                <SelectItem value="7">Semester 7</SelectItem>
-                <SelectItem value="8">Semester 8</SelectItem>
+                {semesters.map(sem => (
+                  <SelectItem key={sem} value={sem}>Sem {sem}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedSection} onValueChange={setSelectedSection}>
+              <SelectTrigger>
+                <SelectValue placeholder="Section" />
+              </SelectTrigger>
+              <SelectContent>
+                {sections.map(section => (
+                  <SelectItem key={section} value={section}>Section {section}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -286,152 +285,106 @@ export const AdminMarks: React.FC = () => {
               </SelectTrigger>
               <SelectContent>
                 {subjects.map(subject => (
-                  <SelectItem key={subject} value={subject}>{subject}</SelectItem>
+                  <SelectItem key={subject.name} value={subject.name}>{subject.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          </div>
-        </CardContent>
-      </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-            <Users className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{students.length}</div>
-            <p className="text-xs text-muted-foreground">In this class</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Class Average</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{classAverage.toFixed(1)}</div>
-            <p className="text-xs text-muted-foreground">Overall marks</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Highest Score</CardTitle>
-            <GraduationCap className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {students.length > 0 ? Math.max(...students.map(s => parseFloat(calculateTotal(s.id)))) : 0}
-            </div>
-            <p className="text-xs text-muted-foreground">Best performance</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pass Rate</CardTitle>
-            <GraduationCap className="h-4 w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
-              {students.length > 0 ? Math.round((students.filter(s => parseFloat(calculateTotal(s.id)) >= 60).length / students.length) * 100) : 0}%
-            </div>
-            <p className="text-xs text-muted-foreground">Students passing</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>Enter Marks</CardTitle>
-              <CardDescription>
-                {selectedSubject} - {selectedBranch} Year {selectedYear} Semester {selectedSemester}
-              </CardDescription>
-            </div>
-            <Button onClick={saveMarks} disabled={loading}>
-              <Save className="h-4 w-4 mr-2" />
-              {loading ? "Saving..." : "Save Marks"}
+            <Button onClick={fetchStudentMarks} disabled={loading || !selectedSubject}>
+              {loading ? 'Loading...' : 'Load Marks'}
             </Button>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-3 font-medium">Student</th>
-                  <th className="text-center p-3 font-medium">Roll Number</th>
-                  <th className="text-center p-3 font-medium">Mid-1 (25)</th>
-                  <th className="text-center p-3 font-medium">Mid-2 (25)</th>
-                  <th className="text-center p-3 font-medium">Assignment (25)</th>
-                  <th className="text-center p-3 font-medium">Total</th>
-                  <th className="text-center p-3 font-medium">Grade</th>
-                </tr>
-              </thead>
-              <tbody>
-                {students.map((student) => {
-                  const total = parseFloat(calculateTotal(student.id));
-                  return (
-                    <tr key={student.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3 font-medium">{student.profiles?.full_name}</td>
-                      <td className="text-center p-3">{student.roll_number}</td>
-                      <td className="text-center p-3">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={marks[student.id]?.mid1 || ''}
-                          onChange={(e) => updateMark(student.id, 'mid1', parseInt(e.target.value) || 0)}
-                          className="w-20 text-center"
-                        />
-                      </td>
-                      <td className="text-center p-3">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={marks[student.id]?.mid2 || ''}
-                          onChange={(e) => updateMark(student.id, 'mid2', parseInt(e.target.value) || 0)}
-                          className="w-20 text-center"
-                        />
-                      </td>
-                      <td className="text-center p-3">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={marks[student.id]?.assignment || ''}
-                          onChange={(e) => updateMark(student.id, 'assignment', parseInt(e.target.value) || 0)}
-                          className="w-20 text-center"
-                        />
-                      </td>
-                      <td className={`text-center p-3 font-bold ${
-                        total >= 90 ? 'text-green-600' :
-                        total >= 80 ? 'text-blue-600' :
-                        total >= 70 ? 'text-yellow-600' : 'text-red-600'
-                      }`}>
-                        {calculateTotal(student.id)}
-                      </td>
-                      <td className={`text-center p-3 font-bold ${
-                        total >= 90 ? 'text-green-600' :
-                        total >= 80 ? 'text-blue-600' :
-                        total >= 70 ? 'text-yellow-600' : 'text-red-600'
-                      }`}>
-                        {getGrade(total)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
         </CardContent>
       </Card>
+
+      {students.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Student Marks - {selectedSubject}</CardTitle>
+              <CardDescription>
+                {selectedBranch} - Year {selectedYear}, Semester {selectedSemester}, Section {selectedSection}
+              </CardDescription>
+            </div>
+            <Button onClick={saveMarks} disabled={saving}>
+              <Save className="h-4 w-4 mr-2" />
+              {saving ? 'Saving...' : 'Save All Marks'}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-3 font-medium">Roll Number</th>
+                    <th className="text-left p-3 font-medium">Student Name</th>
+                    <th className="text-center p-3 font-medium">Mid-1 (25)</th>
+                    <th className="text-center p-3 font-medium">Mid-2 (25)</th>
+                    <th className="text-center p-3 font-medium">Assignment (25)</th>
+                    <th className="text-center p-3 font-medium">Total</th>
+                    <th className="text-center p-3 font-medium">Grade</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map((student) => (
+                    <tr key={student.student_id} className="border-b hover:bg-gray-50">
+                      <td className="p-3 font-medium">{student.roll_number}</td>
+                      <td className="p-3">{student.student_name}</td>
+                      <td className="text-center p-3">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="25"
+                          value={student.mid1.toString()}
+                          onChange={(e) => updateStudentMark(student.student_id, 'mid1', e.target.value)}
+                          className="w-20 text-center"
+                        />
+                      </td>
+                      <td className="text-center p-3">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="25"
+                          value={student.mid2.toString()}
+                          onChange={(e) => updateStudentMark(student.student_id, 'mid2', e.target.value)}
+                          className="w-20 text-center"
+                        />
+                      </td>
+                      <td className="text-center p-3">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="25"
+                          value={student.assignment.toString()}
+                          onChange={(e) => updateStudentMark(student.student_id, 'assignment', e.target.value)}
+                          className="w-20 text-center"
+                        />
+                      </td>
+                      <td className={`text-center p-3 font-bold ${getGradeColor(student.total)}`}>
+                        {student.total.toString()}
+                      </td>
+                      <td className={`text-center p-3 font-bold ${getGradeColor(student.total)}`}>
+                        {getGradeLetter(student.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!loading && students.length === 0 && selectedSubject && (
+        <Card>
+          <CardContent className="text-center py-8">
+            <p className="text-gray-500">No students found for the selected criteria.</p>
+            <p className="text-sm text-gray-400 mt-2">
+              Make sure students are enrolled in {selectedBranch} - Year {selectedYear}, Semester {selectedSemester}, Section {selectedSection}
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
