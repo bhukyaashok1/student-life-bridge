@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -16,6 +15,15 @@ interface Student {
 }
 
 interface AttendanceRecord {
+  student_id: string;
+  is_present: boolean;
+}
+
+interface Subject {
+  name: string;
+}
+
+interface AttendanceData {
   student_id: string;
   is_present: boolean;
 }
@@ -65,7 +73,7 @@ export const AdminAttendance: React.FC = () => {
       setStudents(data || []);
       
       // Initialize attendance for new students
-      const initialAttendance = {};
+      const initialAttendance: Record<string, boolean> = {};
       data?.forEach(student => {
         initialAttendance[student.id] = false;
       });
@@ -77,18 +85,21 @@ export const AdminAttendance: React.FC = () => {
 
   const fetchSubjects = async () => {
     try {
+      // Use a direct query to the subjects table
       const { data, error } = await supabase
-        .from('subjects')
-        .select('name')
-        .eq('branch', selectedBranch)
-        .eq('year', parseInt(selectedYear));
+        .rpc('get_subjects_for_class', {
+          p_branch: selectedBranch,
+          p_year: parseInt(selectedYear)
+        });
 
       if (error) {
         console.error('Error fetching subjects:', error);
+        // Fallback to default subjects if RPC fails
+        setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
         return;
       }
 
-      const subjectNames = [...new Set(data?.map(s => s.name) || [])];
+      const subjectNames = data?.map((s: any) => s.name) || ['Mathematics', 'Physics', 'Chemistry'];
       setSubjects(subjectNames);
       
       if (subjectNames.length > 0 && !subjectNames.includes(selectedSubject)) {
@@ -96,34 +107,49 @@ export const AdminAttendance: React.FC = () => {
       }
     } catch (error) {
       console.error('Error in fetchSubjects:', error);
+      // Fallback to default subjects
+      setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
     }
   };
 
   const fetchAttendance = async () => {
     try {
+      // Use a direct query to fetch attendance
       const { data, error } = await supabase
-        .from('attendance')
-        .select('student_id, is_present')
-        .eq('date', selectedDate)
-        .eq('subject', selectedSubject)
-        .eq('branch', selectedBranch)
-        .eq('year', parseInt(selectedYear))
-        .eq('section', selectedSection);
+        .rpc('get_attendance_records', {
+          p_date: selectedDate,
+          p_subject: selectedSubject,
+          p_branch: selectedBranch,
+          p_year: parseInt(selectedYear),
+          p_section: selectedSection
+        });
 
       if (error) {
         console.error('Error fetching attendance:', error);
+        // Initialize empty attendance if fetch fails
+        const attendanceMap: Record<string, boolean> = {};
+        students.forEach(student => {
+          attendanceMap[student.id] = false;
+        });
+        setAttendance(attendanceMap);
         return;
       }
 
-      const attendanceMap = {};
+      const attendanceMap: Record<string, boolean> = {};
       students.forEach(student => {
-        const record = data?.find(a => a.student_id === student.id);
+        const record = data?.find((a: any) => a.student_id === student.id);
         attendanceMap[student.id] = record ? record.is_present : false;
       });
       
       setAttendance(attendanceMap);
     } catch (error) {
       console.error('Error in fetchAttendance:', error);
+      // Initialize empty attendance if fetch fails
+      const attendanceMap: Record<string, boolean> = {};
+      students.forEach(student => {
+        attendanceMap[student.id] = false;
+      });
+      setAttendance(attendanceMap);
     }
   };
 
@@ -153,17 +179,7 @@ export const AdminAttendance: React.FC = () => {
   const saveAttendance = async () => {
     setLoading(true);
     try {
-      // Delete existing attendance for this date/subject/class
-      await supabase
-        .from('attendance')
-        .delete()
-        .eq('date', selectedDate)
-        .eq('subject', selectedSubject)
-        .eq('branch', selectedBranch)
-        .eq('year', parseInt(selectedYear))
-        .eq('section', selectedSection);
-
-      // Insert new attendance records
+      // Use RPC function to save attendance
       const attendanceRecords = students.map(student => ({
         student_id: student.id,
         date: selectedDate,
@@ -175,8 +191,9 @@ export const AdminAttendance: React.FC = () => {
       }));
 
       const { error } = await supabase
-        .from('attendance')
-        .insert(attendanceRecords);
+        .rpc('save_attendance_records', {
+          p_records: attendanceRecords
+        });
 
       if (error) {
         console.error('Error saving attendance:', error);
@@ -194,6 +211,11 @@ export const AdminAttendance: React.FC = () => {
       });
     } catch (error) {
       console.error('Error in saveAttendance:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save attendance",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }

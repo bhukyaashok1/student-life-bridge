@@ -204,10 +204,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('User created, now creating profile...');
 
-      // Wait for user to be fully created
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Wait a bit for user to be fully created
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Create profile
+      // Create profile with proper error handling
       const { data: newProfile, error: profileError } = await supabase
         .from('profiles')
         .insert({
@@ -223,6 +223,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (profileError) {
         console.error('Profile creation error:', profileError);
+        // Try to delete the user if profile creation fails
+        await supabase.auth.admin.deleteUser(authData.user.id);
         return { error: profileError };
       }
 
@@ -244,6 +246,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (studentError) {
         console.error('Student data creation error:', studentError);
+        // Clean up profile and user if student creation fails
+        await supabase.from('profiles').delete().eq('id', newProfile.id);
+        await supabase.auth.admin.deleteUser(authData.user.id);
         return { error: studentError };
       }
 

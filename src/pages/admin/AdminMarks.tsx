@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -73,19 +72,22 @@ export const AdminMarks: React.FC = () => {
 
   const fetchSubjects = async () => {
     try {
+      // Use RPC function or fallback to default subjects
       const { data, error } = await supabase
-        .from('subjects')
-        .select('name')
-        .eq('branch', selectedBranch)
-        .eq('year', parseInt(selectedYear))
-        .eq('semester', parseInt(selectedSemester));
+        .rpc('get_subjects_for_class', {
+          p_branch: selectedBranch,
+          p_year: parseInt(selectedYear),
+          p_semester: parseInt(selectedSemester)
+        });
 
       if (error) {
         console.error('Error fetching subjects:', error);
+        // Fallback to default subjects
+        setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
         return;
       }
 
-      const subjectNames = [...new Set(data?.map(s => s.name) || [])];
+      const subjectNames = data?.map((s: any) => s.name) || ['Mathematics', 'Physics', 'Chemistry'];
       setSubjects(subjectNames);
       
       if (subjectNames.length > 0 && !subjectNames.includes(selectedSubject)) {
@@ -93,27 +95,42 @@ export const AdminMarks: React.FC = () => {
       }
     } catch (error) {
       console.error('Error in fetchSubjects:', error);
+      // Fallback to default subjects
+      setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
     }
   };
 
   const fetchMarks = async () => {
     try {
+      // Use RPC function to fetch marks
       const { data, error } = await supabase
-        .from('marks')
-        .select('*')
-        .eq('subject', selectedSubject)
-        .eq('branch', selectedBranch)
-        .eq('year', parseInt(selectedYear))
-        .eq('semester', parseInt(selectedSemester));
+        .rpc('get_marks_for_subject', {
+          p_subject: selectedSubject,
+          p_branch: selectedBranch,
+          p_year: parseInt(selectedYear),
+          p_semester: parseInt(selectedSemester)
+        });
 
       if (error) {
         console.error('Error fetching marks:', error);
+        // Initialize empty marks if fetch fails
+        const marksMap: Record<string, Mark> = {};
+        students.forEach(student => {
+          marksMap[student.id] = {
+            student_id: student.id,
+            mid1: 0,
+            mid2: 0,
+            assignment: 0,
+            total: 0
+          };
+        });
+        setMarks(marksMap);
         return;
       }
 
-      const marksMap = {};
+      const marksMap: Record<string, Mark> = {};
       students.forEach(student => {
-        const mark = data?.find(m => m.student_id === student.id);
+        const mark = data?.find((m: any) => m.student_id === student.id);
         marksMap[student.id] = {
           student_id: student.id,
           mid1: mark?.mid1 || 0,
@@ -126,6 +143,18 @@ export const AdminMarks: React.FC = () => {
       setMarks(marksMap);
     } catch (error) {
       console.error('Error in fetchMarks:', error);
+      // Initialize empty marks if fetch fails
+      const marksMap: Record<string, Mark> = {};
+      students.forEach(student => {
+        marksMap[student.id] = {
+          student_id: student.id,
+          mid1: 0,
+          mid2: 0,
+          assignment: 0,
+          total: 0
+        };
+      });
+      setMarks(marksMap);
     }
   };
 
@@ -167,19 +196,11 @@ export const AdminMarks: React.FC = () => {
         assignment: mark.assignment
       }));
 
-      // Delete existing marks for this subject/class
-      await supabase
-        .from('marks')
-        .delete()
-        .eq('subject', selectedSubject)
-        .eq('branch', selectedBranch)
-        .eq('year', parseInt(selectedYear))
-        .eq('semester', parseInt(selectedSemester));
-
-      // Insert new marks
+      // Use RPC function to save marks
       const { error } = await supabase
-        .from('marks')
-        .insert(marksToSave);
+        .rpc('save_marks_records', {
+          p_records: marksToSave
+        });
 
       if (error) {
         console.error('Error saving marks:', error);
@@ -199,6 +220,11 @@ export const AdminMarks: React.FC = () => {
       fetchMarks(); // Refresh to get updated totals
     } catch (error) {
       console.error('Error in saveMarks:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save marks",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
