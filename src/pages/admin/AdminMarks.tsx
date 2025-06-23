@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -72,7 +73,6 @@ export const AdminMarks: React.FC = () => {
 
   const fetchSubjects = async () => {
     try {
-      // Use RPC function or fallback to default subjects
       const { data, error } = await supabase
         .rpc('get_subjects_for_class', {
           p_branch: selectedBranch,
@@ -102,13 +102,13 @@ export const AdminMarks: React.FC = () => {
 
   const fetchMarks = async () => {
     try {
-      // Use RPC function to fetch marks
       const { data, error } = await supabase
-        .rpc('get_marks_for_subject', {
-          p_subject: selectedSubject,
+        .rpc('get_student_marks', {
           p_branch: selectedBranch,
           p_year: parseInt(selectedYear),
-          p_semester: parseInt(selectedSemester)
+          p_semester: parseInt(selectedSemester),
+          p_section: 'A',
+          p_subject: selectedSubject
         });
 
       if (error) {
@@ -185,31 +185,23 @@ export const AdminMarks: React.FC = () => {
   const saveMarks = async () => {
     setLoading(true);
     try {
-      const marksToSave = Object.values(marks).map(mark => ({
-        student_id: mark.student_id,
-        subject: selectedSubject,
-        branch: selectedBranch,
-        year: parseInt(selectedYear),
-        semester: parseInt(selectedSemester),
-        mid1: mark.mid1,
-        mid2: mark.mid2,
-        assignment: mark.assignment
-      }));
+      for (const mark of Object.values(marks)) {
+        const { error } = await supabase
+          .rpc('save_student_marks', {
+            p_student_id: mark.student_id,
+            p_subject: selectedSubject,
+            p_branch: selectedBranch,
+            p_year: parseInt(selectedYear),
+            p_semester: parseInt(selectedSemester),
+            p_section: 'A',
+            p_mid1: mark.mid1,
+            p_mid2: mark.mid2,
+            p_assignment: mark.assignment
+          });
 
-      // Use RPC function to save marks
-      const { error } = await supabase
-        .rpc('save_marks_records', {
-          p_records: marksToSave
-        });
-
-      if (error) {
-        console.error('Error saving marks:', error);
-        toast({
-          title: "Error",
-          description: "Failed to save marks",
-          variant: "destructive",
-        });
-        return;
+        if (error) {
+          console.error('Error saving marks for student:', mark.student_id, error);
+        }
       }
 
       toast({

@@ -202,12 +202,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: { message: 'Failed to create user' } };
       }
 
-      console.log('User created, now creating profile...');
+      console.log('User created successfully:', authData.user.id);
 
       // Wait a bit for user to be fully created
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Create profile with proper error handling
+      // Create profile - the user_id column should match the auth user id
       const { data: newProfile, error: profileError } = await supabase
         .from('profiles')
         .insert({
@@ -223,12 +223,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (profileError) {
         console.error('Profile creation error:', profileError);
-        // Try to delete the user if profile creation fails
-        await supabase.auth.admin.deleteUser(authData.user.id);
         return { error: profileError };
       }
 
-      console.log('Profile created, now creating student data...');
+      console.log('Profile created successfully:', newProfile);
 
       // Create student data
       const { error: studentError } = await supabase
@@ -246,9 +244,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (studentError) {
         console.error('Student data creation error:', studentError);
-        // Clean up profile and user if student creation fails
+        // Clean up profile if student creation fails
         await supabase.from('profiles').delete().eq('id', newProfile.id);
-        await supabase.auth.admin.deleteUser(authData.user.id);
         return { error: studentError };
       }
 

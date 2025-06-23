@@ -9,6 +9,112 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      attendance: {
+        Row: {
+          branch: string
+          created_at: string
+          date: string
+          id: string
+          is_present: boolean
+          section: string
+          semester: number
+          student_id: string | null
+          subject: string
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          branch: string
+          created_at?: string
+          date: string
+          id?: string
+          is_present?: boolean
+          section: string
+          semester: number
+          student_id?: string | null
+          subject: string
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          branch?: string
+          created_at?: string
+          date?: string
+          id?: string
+          is_present?: boolean
+          section?: string
+          semester?: number
+          student_id?: string | null
+          subject?: string
+          updated_at?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marks: {
+        Row: {
+          assignment: number | null
+          branch: string
+          created_at: string
+          id: string
+          mid1: number | null
+          mid2: number | null
+          section: string
+          semester: number
+          student_id: string | null
+          subject: string
+          total: number | null
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          assignment?: number | null
+          branch: string
+          created_at?: string
+          id?: string
+          mid1?: number | null
+          mid2?: number | null
+          section: string
+          semester: number
+          student_id?: string | null
+          subject: string
+          total?: number | null
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          assignment?: number | null
+          branch?: string
+          created_at?: string
+          id?: string
+          mid1?: number | null
+          mid2?: number | null
+          section?: string
+          semester?: number
+          student_id?: string | null
+          subject?: string
+          total?: number | null
+          updated_at?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marks_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           address: string | null
@@ -95,6 +201,33 @@ export type Database = {
           },
         ]
       }
+      subjects: {
+        Row: {
+          branch: string
+          created_at: string
+          id: string
+          name: string
+          semester: number
+          year: number
+        }
+        Insert: {
+          branch: string
+          created_at?: string
+          id?: string
+          name: string
+          semester: number
+          year: number
+        }
+        Update: {
+          branch?: string
+          created_at?: string
+          id?: string
+          name?: string
+          semester?: number
+          year?: number
+        }
+        Relationships: []
+      }
       timetables: {
         Row: {
           branch: string
@@ -139,7 +272,62 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_attendance_records: {
+        Args: {
+          p_date: string
+          p_subject: string
+          p_branch: string
+          p_year: number
+          p_section: string
+        }
+        Returns: {
+          student_id: string
+          is_present: boolean
+        }[]
+      }
+      get_student_marks: {
+        Args: {
+          p_branch: string
+          p_year: number
+          p_semester: number
+          p_section: string
+          p_subject?: string
+        }
+        Returns: {
+          student_id: string
+          student_name: string
+          roll_number: string
+          subject: string
+          mid1: number
+          mid2: number
+          assignment: number
+          total: number
+        }[]
+      }
+      get_subjects_for_class: {
+        Args: { p_branch: string; p_year: number; p_semester?: number }
+        Returns: {
+          name: string
+        }[]
+      }
+      save_attendance_records: {
+        Args: { p_records: Json }
+        Returns: undefined
+      }
+      save_student_marks: {
+        Args: {
+          p_student_id: string
+          p_subject: string
+          p_branch: string
+          p_year: number
+          p_semester: number
+          p_section: string
+          p_mid1: number
+          p_mid2: number
+          p_assignment: number
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

@@ -4,15 +4,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { Save, Plus, Edit, Trash2 } from 'lucide-react';
+import { Calendar, Plus, Edit, Trash2, Clock } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
 import { useToast } from '../../components/ui/use-toast';
 
 interface TimetableEntry {
-  id?: string;
+  id: string;
   day_of_week: string;
   time_slot: string;
   subject: string;
+  branch: string;
+  year: number;
+  semester: number;
+  section: string;
 }
 
 export const AdminTimetable: React.FC = () => {
@@ -20,16 +24,14 @@ export const AdminTimetable: React.FC = () => {
   const [selectedYear, setSelectedYear] = useState('3');
   const [selectedSemester, setSelectedSemester] = useState('5');
   const [selectedSection, setSelectedSection] = useState('A');
-  const [timetable, setTimetable] = useState<Record<string, TimetableEntry[]>>({});
+  const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
   const [subjects, setSubjects] = useState<string[]>([]);
+  const [editingEntry, setEditingEntry] = useState<TimetableEntry | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [editingSlot, setEditingSlot] = useState<{day: string, index: number} | null>(null);
-  const [newSubject, setNewSubject] = useState('');
-  const [editingTimeSlot, setEditingTimeSlot] = useState<{day: string, index: number} | null>(null);
-  const [newTimeSlot, setNewTimeSlot] = useState('');
   const { toast } = useToast();
 
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   useEffect(() => {
     fetchTimetable();
@@ -39,26 +41,27 @@ export const AdminTimetable: React.FC = () => {
   const fetchSubjects = async () => {
     try {
       const { data, error } = await supabase
-        .from('subjects')
-        .select('name')
-        .eq('branch', selectedBranch)
-        .eq('year', parseInt(selectedYear))
-        .eq('semester', parseInt(selectedSemester));
+        .rpc('get_subjects_for_class', {
+          p_branch: selectedBranch,
+          p_year: parseInt(selectedYear),
+          p_semester: parseInt(selectedSemester)
+        });
 
       if (error) {
         console.error('Error fetching subjects:', error);
+        setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
         return;
       }
 
-      const subjectNames = [...new Set(data?.map(s => s.name) || [])];
+      const subjectNames = data?.map((s: any) => s.name) || ['Mathematics', 'Physics', 'Chemistry'];
       setSubjects(subjectNames);
     } catch (error) {
       console.error('Error in fetchSubjects:', error);
+      setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
     }
   };
 
   const fetchTimetable = async () => {
-    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('timetables')
@@ -66,205 +69,214 @@ export const AdminTimetable: React.FC = () => {
         .eq('branch', selectedBranch)
         .eq('year', parseInt(selectedYear))
         .eq('semester', parseInt(selectedSemester))
-        .eq('section', selectedSection);
+        .eq('section', selectedSection)
+        .order('day_of_week')
+        .order('time_slot');
 
       if (error) {
         console.error('Error fetching timetable:', error);
         return;
       }
 
-      // Initialize empty timetable structure
-      const newTimetable: Record<string, TimetableEntry[]> = {};
-      days.forEach(day => {
-        newTimetable[day] = data?.filter(item => item.day_of_week === day).sort((a, b) => a.time_slot.localeCompare(b.time_slot)) || [];
-      });
-
-      setTimetable(newTimetable);
+      setTimetable(data || []);
     } catch (error) {
       console.error('Error in fetchTimetable:', error);
+    }
+  };
+
+  const addTimetableEntry = async (entry: Omit<TimetableEntry, 'id'>) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('timetables')
+        .insert({
+          ...entry,
+          branch: selectedBranch,
+          year: parseInt(selectedYear),
+          semester: parseInt(selectedSemester),
+          section: selectedSection
+        });
+
+      if (error) {
+        console.error('Error adding timetable entry:', error);
+        toast({
+          title: "Error",
+          description: "Failed to add timetable entry",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "Timetable entry added successfully",
+      });
+      
+      fetchTimetable();
+      setShowAddForm(false);
+    } catch (error) {
+      console.error('Error in addTimetableEntry:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add timetable entry",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const updateSubject = async (day: string, slotIndex: number, subject: string) => {
-    const slot = timetable[day][slotIndex];
-    
+  const updateTimetableEntry = async (id: string, updates: Partial<TimetableEntry>) => {
+    setLoading(true);
     try {
-      if (slot.id) {
-        // Update existing entry
-        const { error } = await supabase
-          .from('timetables')
-          .update({ subject })
-          .eq('id', slot.id);
+      const { error } = await supabase
+        .from('timetables')
+        .update(updates)
+        .eq('id', id);
 
-        if (error) {
-          console.error('Error updating timetable:', error);
-          toast({
-            title: "Error",
-            description: "Failed to update subject",
-            variant: "destructive",
-          });
-          return;
-        }
-      } else {
-        // Create new entry
-        const { data, error } = await supabase
-          .from('timetables')
-          .insert({
-            branch: selectedBranch,
-            year: parseInt(selectedYear),
-            semester: parseInt(selectedSemester),
-            section: selectedSection,
-            day_of_week: day,
-            time_slot: slot.time_slot,
-            subject
-          })
-          .select()
-          .single();
-
-        if (error) {
-          console.error('Error creating timetable entry:', error);
-          toast({
-            title: "Error",
-            description: "Failed to create timetable entry",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        // Update local state with the new ID
-        setTimetable(prev => ({
-          ...prev,
-          [day]: prev[day].map((item, index) => 
-            index === slotIndex ? { ...item, id: data.id, subject } : item
-          )
-        }));
-      }
-
-      // Update local state
-      setTimetable(prev => ({
-        ...prev,
-        [day]: prev[day].map((item, index) => 
-          index === slotIndex ? { ...item, subject } : item
-        )
-      }));
-
-      setEditingSlot(null);
-      setNewSubject('');
-      
-      toast({
-        title: "Success",
-        description: "Subject updated successfully",
-      });
-    } catch (error) {
-      console.error('Error updating subject:', error);
-    }
-  };
-
-  const updateTimeSlot = async (day: string, slotIndex: number, timeSlot: string) => {
-    const slot = timetable[day][slotIndex];
-    
-    try {
-      if (slot.id) {
-        const { error } = await supabase
-          .from('timetables')
-          .update({ time_slot: timeSlot })
-          .eq('id', slot.id);
-
-        if (error) {
-          console.error('Error updating time slot:', error);
-          toast({
-            title: "Error",
-            description: "Failed to update time slot",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        // Update local state
-        setTimetable(prev => ({
-          ...prev,
-          [day]: prev[day].map((item, index) => 
-            index === slotIndex ? { ...item, time_slot: timeSlot } : item
-          )
-        }));
-
+      if (error) {
+        console.error('Error updating timetable entry:', error);
         toast({
-          title: "Success",
-          description: "Time slot updated successfully",
+          title: "Error",
+          description: "Failed to update timetable entry",
+          variant: "destructive",
         });
+        return;
       }
-
-      setEditingTimeSlot(null);
-      setNewTimeSlot('');
-    } catch (error) {
-      console.error('Error updating time slot:', error);
-    }
-  };
-
-  const addTimeSlot = (day: string) => {
-    const newSlot = `${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}:00-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}:00`;
-    setTimetable(prev => ({
-      ...prev,
-      [day]: [...prev[day], { day_of_week: day, time_slot: newSlot, subject: "Free Period" }]
-    }));
-  };
-
-  const removeTimeSlot = async (day: string, slotIndex: number) => {
-    const slot = timetable[day][slotIndex];
-    
-    try {
-      if (slot.id) {
-        const { error } = await supabase
-          .from('timetables')
-          .delete()
-          .eq('id', slot.id);
-
-        if (error) {
-          console.error('Error deleting timetable entry:', error);
-          toast({
-            title: "Error",
-            description: "Failed to delete time slot",
-            variant: "destructive",
-          });
-          return;
-        }
-      }
-
-      setTimetable(prev => ({
-        ...prev,
-        [day]: prev[day].filter((_, index) => index !== slotIndex)
-      }));
 
       toast({
         title: "Success",
-        description: "Time slot deleted successfully",
+        description: "Timetable entry updated successfully",
       });
+      
+      fetchTimetable();
+      setEditingEntry(null);
     } catch (error) {
-      console.error('Error removing time slot:', error);
+      console.error('Error in updateTimetableEntry:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update timetable entry",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getSubjectColor = (subject: string) => {
-    const colors: Record<string, string> = {
-      'Mathematics': 'bg-blue-100 text-blue-800 border-blue-200',
-      'Physics': 'bg-green-100 text-green-800 border-green-200',
-      'Chemistry': 'bg-purple-100 text-purple-800 border-purple-200',
-      'English': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      'Computer Science': 'bg-red-100 text-red-800 border-red-200',
-      'Electronics': 'bg-indigo-100 text-indigo-800 border-indigo-200',
-      'Mechanical': 'bg-orange-100 text-orange-800 border-orange-200',
-      'Free Period': 'bg-gray-100 text-gray-800 border-gray-200',
-    };
-    return colors[subject] || 'bg-gray-100 text-gray-800 border-gray-200';
+  const deleteTimetableEntry = async (id: string) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('timetables')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting timetable entry:', error);
+        toast({
+          title: "Error",
+          description: "Failed to delete timetable entry",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "Timetable entry deleted successfully",
+      });
+      
+      fetchTimetable();
+    } catch (error) {
+      console.error('Error in deleteTimetableEntry:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete timetable entry",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const TimetableForm = ({ entry, onSubmit, onCancel }: {
+    entry?: TimetableEntry;
+    onSubmit: (data: Omit<TimetableEntry, 'id'>) => void;
+    onCancel: () => void;
+  }) => {
+    const [formData, setFormData] = useState({
+      day_of_week: entry?.day_of_week || 'Monday',
+      time_slot: entry?.time_slot || '',
+      subject: entry?.subject || subjects[0] || ''
+    });
+
+    const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      onSubmit({
+        ...formData,
+        branch: selectedBranch,
+        year: parseInt(selectedYear),
+        semester: parseInt(selectedSemester),
+        section: selectedSection
+      });
+    };
+
+    return (
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Select value={formData.day_of_week} onValueChange={(value) => setFormData({...formData, day_of_week: value})}>
+            <SelectTrigger>
+              <SelectValue placeholder="Day" />
+            </SelectTrigger>
+            <SelectContent>
+              {daysOfWeek.map(day => (
+                <SelectItem key={day} value={day}>{day}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Input
+            type="text"
+            placeholder="Time Slot (e.g., 9:00-10:00)"
+            value={formData.time_slot}
+            onChange={(e) => setFormData({...formData, time_slot: e.target.value})}
+            required
+          />
+
+          <Select value={formData.subject} onValueChange={(value) => setFormData({...formData, subject: value})}>
+            <SelectTrigger>
+              <SelectValue placeholder="Subject" />
+            </SelectTrigger>
+            <SelectContent>
+              {subjects.map(subject => (
+                <SelectItem key={subject} value={subject}>{subject}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex space-x-2">
+          <Button type="submit" disabled={loading}>
+            {entry ? 'Update' : 'Add'} Entry
+          </Button>
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    );
+  };
+
+  const groupedTimetable = daysOfWeek.reduce((acc, day) => {
+    acc[day] = timetable.filter(entry => entry.day_of_week === day);
+    return acc;
+  }, {} as Record<string, TimetableEntry[]>);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Timetable Management</h1>
-        <p className="text-gray-600">Create and manage class timetables</p>
+        <p className="text-gray-600">Manage class schedules and time slots</p>
       </div>
 
       <Card>
@@ -283,7 +295,6 @@ export const AdminTimetable: React.FC = () => {
                 <SelectItem value="Electronics">Electronics</SelectItem>
                 <SelectItem value="Mechanical">Mechanical</SelectItem>
                 <SelectItem value="Civil">Civil</SelectItem>
-                <SelectItem value="Electrical">Electrical</SelectItem>
               </SelectContent>
             </Select>
 
@@ -333,116 +344,90 @@ export const AdminTimetable: React.FC = () => {
         <CardHeader>
           <div className="flex justify-between items-center">
             <div>
-              <CardTitle>Timetable Editor</CardTitle>
+              <CardTitle>Timetable</CardTitle>
               <CardDescription>
                 {selectedBranch} Year {selectedYear} Semester {selectedSemester} Section {selectedSection}
               </CardDescription>
             </div>
+            <Button onClick={() => setShowAddForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Entry
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="text-center py-8">Loading timetable...</div>
-          ) : (
-            <div className="space-y-6">
-              {days.map(day => (
-                <div key={day} className="border rounded-lg p-4">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">{day}</h3>
-                    <Button size="sm" variant="outline" onClick={() => addTimeSlot(day)}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add Slot
-                    </Button>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {timetable[day]?.map((slot, index) => (
-                      <div key={index} className={`p-3 rounded border ${getSubjectColor(slot.subject)}`}>
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="text-sm font-medium">
-                              {editingTimeSlot?.day === day && editingTimeSlot?.index === index ? (
-                                <div className="space-y-2">
-                                  <Input
-                                    value={newTimeSlot}
-                                    onChange={(e) => setNewTimeSlot(e.target.value)}
-                                    placeholder="e.g., 09:00-10:00"
-                                    className="h-6 text-xs"
-                                  />
-                                  <div className="flex space-x-1">
-                                    <Button size="sm" onClick={() => updateTimeSlot(day, index, newTimeSlot)}>
-                                      Save
-                                    </Button>
-                                    <Button size="sm" variant="outline" onClick={() => setEditingTimeSlot(null)}>
-                                      Cancel
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <span 
-                                  className="cursor-pointer hover:underline"
-                                  onClick={() => {
-                                    setEditingTimeSlot({ day, index });
-                                    setNewTimeSlot(slot.time_slot);
-                                  }}
-                                >
-                                  {slot.time_slot}
-                                </span>
-                              )}
-                            </div>
-                            {editingSlot?.day === day && editingSlot?.index === index ? (
-                              <div className="mt-2 space-y-2">
-                                <Select value={newSubject} onValueChange={setNewSubject}>
-                                  <SelectTrigger className="h-8">
-                                    <SelectValue placeholder="Select subject" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {subjects.map(subject => (
-                                      <SelectItem key={subject} value={subject}>{subject}</SelectItem>
-                                    ))}
-                                    <SelectItem value="Free Period">Free Period</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <div className="flex space-x-1">
-                                  <Button size="sm" onClick={() => updateSubject(day, index, newSubject)}>
-                                    Save
-                                  </Button>
-                                  <Button size="sm" variant="outline" onClick={() => setEditingSlot(null)}>
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="text-sm mt-1">{slot.subject}</div>
-                            )}
-                          </div>
-                          <div className="flex space-x-1 ml-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setEditingSlot({ day, index });
-                                setNewSubject(slot.subject);
-                              }}
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => removeTimeSlot(day, index)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+          {showAddForm && (
+            <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+              <h3 className="font-medium mb-4">Add New Entry</h3>
+              <TimetableForm
+                onSubmit={addTimetableEntry}
+                onCancel={() => setShowAddForm(false)}
+              />
             </div>
           )}
+
+          {editingEntry && (
+            <div className="mb-6 p-4 border rounded-lg bg-blue-50">
+              <h3 className="font-medium mb-4">Edit Entry</h3>
+              <TimetableForm
+                entry={editingEntry}
+                onSubmit={(data) => updateTimetableEntry(editingEntry.id, data)}
+                onCancel={() => setEditingEntry(null)}
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {daysOfWeek.map(day => (
+              <Card key={day}>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center">
+                    <Calendar className="h-4 w-4 mr-2" />
+                    {day}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {groupedTimetable[day]?.length > 0 ? (
+                      groupedTimetable[day].map(entry => (
+                        <div key={entry.id} className="p-3 border rounded-lg bg-white">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="flex items-center text-sm text-gray-600">
+                                <Clock className="h-3 w-3 mr-1" />
+                                {entry.time_slot}
+                              </div>
+                              <div className="font-medium text-gray-900">{entry.subject}</div>
+                            </div>
+                            <div className="flex space-x-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setEditingEntry(entry)}
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => deleteTimetableEntry(entry.id)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center text-gray-500 py-4">
+                        No classes scheduled
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>

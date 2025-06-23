@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -15,15 +16,6 @@ interface Student {
 }
 
 interface AttendanceRecord {
-  student_id: string;
-  is_present: boolean;
-}
-
-interface Subject {
-  name: string;
-}
-
-interface AttendanceData {
   student_id: string;
   is_present: boolean;
 }
@@ -85,7 +77,6 @@ export const AdminAttendance: React.FC = () => {
 
   const fetchSubjects = async () => {
     try {
-      // Use a direct query to the subjects table
       const { data, error } = await supabase
         .rpc('get_subjects_for_class', {
           p_branch: selectedBranch,
@@ -114,7 +105,6 @@ export const AdminAttendance: React.FC = () => {
 
   const fetchAttendance = async () => {
     try {
-      // Use a direct query to fetch attendance
       const { data, error } = await supabase
         .rpc('get_attendance_records', {
           p_date: selectedDate,
@@ -179,7 +169,6 @@ export const AdminAttendance: React.FC = () => {
   const saveAttendance = async () => {
     setLoading(true);
     try {
-      // Use RPC function to save attendance
       const attendanceRecords = students.map(student => ({
         student_id: student.id,
         date: selectedDate,
