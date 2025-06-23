@@ -2,9 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Save, Plus, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
+import { useToast } from '../../components/ui/use-toast';
 
 interface TimetableEntry {
   id?: string;
@@ -19,17 +21,41 @@ export const AdminTimetable: React.FC = () => {
   const [selectedSemester, setSelectedSemester] = useState('5');
   const [selectedSection, setSelectedSection] = useState('A');
   const [timetable, setTimetable] = useState<Record<string, TimetableEntry[]>>({});
+  const [subjects, setSubjects] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingSlot, setEditingSlot] = useState<{day: string, index: number} | null>(null);
   const [newSubject, setNewSubject] = useState('');
+  const [editingTimeSlot, setEditingTimeSlot] = useState<{day: string, index: number} | null>(null);
+  const [newTimeSlot, setNewTimeSlot] = useState('');
+  const { toast } = useToast();
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const timeSlots = ["09:00-10:00", "10:00-11:00", "11:30-12:30", "01:30-02:30", "02:30-03:30"];
-  const subjects = ['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science', 'Physics Lab', 'Chemistry Lab', 'Computer Science Lab'];
 
   useEffect(() => {
     fetchTimetable();
+    fetchSubjects();
   }, [selectedBranch, selectedYear, selectedSemester, selectedSection]);
+
+  const fetchSubjects = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('subjects')
+        .select('name')
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear))
+        .eq('semester', parseInt(selectedSemester));
+
+      if (error) {
+        console.error('Error fetching subjects:', error);
+        return;
+      }
+
+      const subjectNames = [...new Set(data?.map(s => s.name) || [])];
+      setSubjects(subjectNames);
+    } catch (error) {
+      console.error('Error in fetchSubjects:', error);
+    }
+  };
 
   const fetchTimetable = async () => {
     setLoading(true);
@@ -50,7 +76,7 @@ export const AdminTimetable: React.FC = () => {
       // Initialize empty timetable structure
       const newTimetable: Record<string, TimetableEntry[]> = {};
       days.forEach(day => {
-        newTimetable[day] = data?.filter(item => item.day_of_week === day) || [];
+        newTimetable[day] = data?.filter(item => item.day_of_week === day).sort((a, b) => a.time_slot.localeCompare(b.time_slot)) || [];
       });
 
       setTimetable(newTimetable);
@@ -74,6 +100,11 @@ export const AdminTimetable: React.FC = () => {
 
         if (error) {
           console.error('Error updating timetable:', error);
+          toast({
+            title: "Error",
+            description: "Failed to update subject",
+            variant: "destructive",
+          });
           return;
         }
       } else {
@@ -94,6 +125,11 @@ export const AdminTimetable: React.FC = () => {
 
         if (error) {
           console.error('Error creating timetable entry:', error);
+          toast({
+            title: "Error",
+            description: "Failed to create timetable entry",
+            variant: "destructive",
+          });
           return;
         }
 
@@ -116,22 +152,59 @@ export const AdminTimetable: React.FC = () => {
 
       setEditingSlot(null);
       setNewSubject('');
+      
+      toast({
+        title: "Success",
+        description: "Subject updated successfully",
+      });
     } catch (error) {
       console.error('Error updating subject:', error);
     }
   };
 
-  const addTimeSlot = (day: string) => {
-    const availableSlots = timeSlots.filter(slot => 
-      !timetable[day].some(item => item.time_slot === slot)
-    );
+  const updateTimeSlot = async (day: string, slotIndex: number, timeSlot: string) => {
+    const slot = timetable[day][slotIndex];
+    
+    try {
+      if (slot.id) {
+        const { error } = await supabase
+          .from('timetables')
+          .update({ time_slot: timeSlot })
+          .eq('id', slot.id);
 
-    if (availableSlots.length === 0) {
-      alert('All time slots are already filled for this day.');
-      return;
+        if (error) {
+          console.error('Error updating time slot:', error);
+          toast({
+            title: "Error",
+            description: "Failed to update time slot",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Update local state
+        setTimetable(prev => ({
+          ...prev,
+          [day]: prev[day].map((item, index) => 
+            index === slotIndex ? { ...item, time_slot: timeSlot } : item
+          )
+        }));
+
+        toast({
+          title: "Success",
+          description: "Time slot updated successfully",
+        });
+      }
+
+      setEditingTimeSlot(null);
+      setNewTimeSlot('');
+    } catch (error) {
+      console.error('Error updating time slot:', error);
     }
+  };
 
-    const newSlot = availableSlots[0];
+  const addTimeSlot = (day: string) => {
+    const newSlot = `${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}:00-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}:00`;
     setTimetable(prev => ({
       ...prev,
       [day]: [...prev[day], { day_of_week: day, time_slot: newSlot, subject: "Free Period" }]
@@ -150,6 +223,11 @@ export const AdminTimetable: React.FC = () => {
 
         if (error) {
           console.error('Error deleting timetable entry:', error);
+          toast({
+            title: "Error",
+            description: "Failed to delete time slot",
+            variant: "destructive",
+          });
           return;
         }
       }
@@ -158,6 +236,11 @@ export const AdminTimetable: React.FC = () => {
         ...prev,
         [day]: prev[day].filter((_, index) => index !== slotIndex)
       }));
+
+      toast({
+        title: "Success",
+        description: "Time slot deleted successfully",
+      });
     } catch (error) {
       console.error('Error removing time slot:', error);
     }
@@ -170,9 +253,8 @@ export const AdminTimetable: React.FC = () => {
       'Chemistry': 'bg-purple-100 text-purple-800 border-purple-200',
       'English': 'bg-yellow-100 text-yellow-800 border-yellow-200',
       'Computer Science': 'bg-red-100 text-red-800 border-red-200',
-      'Physics Lab': 'bg-green-200 text-green-900 border-green-300',
-      'Chemistry Lab': 'bg-purple-200 text-purple-900 border-purple-300',
-      'Computer Science Lab': 'bg-red-200 text-red-900 border-red-300',
+      'Electronics': 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      'Mechanical': 'bg-orange-100 text-orange-800 border-orange-200',
       'Free Period': 'bg-gray-100 text-gray-800 border-gray-200',
     };
     return colors[subject] || 'bg-gray-100 text-gray-800 border-gray-200';
@@ -278,7 +360,36 @@ export const AdminTimetable: React.FC = () => {
                       <div key={index} className={`p-3 rounded border ${getSubjectColor(slot.subject)}`}>
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
-                            <div className="text-sm font-medium">{slot.time_slot}</div>
+                            <div className="text-sm font-medium">
+                              {editingTimeSlot?.day === day && editingTimeSlot?.index === index ? (
+                                <div className="space-y-2">
+                                  <Input
+                                    value={newTimeSlot}
+                                    onChange={(e) => setNewTimeSlot(e.target.value)}
+                                    placeholder="e.g., 09:00-10:00"
+                                    className="h-6 text-xs"
+                                  />
+                                  <div className="flex space-x-1">
+                                    <Button size="sm" onClick={() => updateTimeSlot(day, index, newTimeSlot)}>
+                                      Save
+                                    </Button>
+                                    <Button size="sm" variant="outline" onClick={() => setEditingTimeSlot(null)}>
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span 
+                                  className="cursor-pointer hover:underline"
+                                  onClick={() => {
+                                    setEditingTimeSlot({ day, index });
+                                    setNewTimeSlot(slot.time_slot);
+                                  }}
+                                >
+                                  {slot.time_slot}
+                                </span>
+                              )}
+                            </div>
                             {editingSlot?.day === day && editingSlot?.index === index ? (
                               <div className="mt-2 space-y-2">
                                 <Select value={newSubject} onValueChange={setNewSubject}>
@@ -289,6 +400,7 @@ export const AdminTimetable: React.FC = () => {
                                     {subjects.map(subject => (
                                       <SelectItem key={subject} value={subject}>{subject}</SelectItem>
                                     ))}
+                                    <SelectItem value="Free Period">Free Period</SelectItem>
                                   </SelectContent>
                                 </Select>
                                 <div className="flex space-x-1">

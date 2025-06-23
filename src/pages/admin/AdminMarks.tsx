@@ -1,51 +1,148 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { GraduationCap, Users, TrendingUp, Save } from 'lucide-react';
+import { supabase } from '../../integrations/supabase/client';
+import { useToast } from '../../components/ui/use-toast';
+
+interface Student {
+  id: string;
+  roll_number: string;
+  profiles: {
+    full_name: string;
+  };
+}
+
+interface Mark {
+  student_id: string;
+  mid1: number;
+  mid2: number;
+  assignment: number;
+  total: number;
+}
 
 export const AdminMarks: React.FC = () => {
   const [selectedBranch, setSelectedBranch] = useState('Computer Science');
   const [selectedYear, setSelectedYear] = useState('3');
   const [selectedSemester, setSelectedSemester] = useState('5');
   const [selectedSubject, setSelectedSubject] = useState('Mathematics');
-  const [selectedExamType, setSelectedExamType] = useState('mid1');
+  const [students, setStudents] = useState<Student[]>([]);
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [marks, setMarks] = useState<Record<string, Mark>>({});
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
 
-  const students = [
-    { id: '1', name: 'John Doe', rollNumber: 'CS21001', mid1: 85, mid2: 90, assignment: 88, endExam: 87 },
-    { id: '2', name: 'Jane Smith', rollNumber: 'CS21002', mid1: 92, mid2: 88, assignment: 90, endExam: 91 },
-    { id: '3', name: 'Mike Johnson', rollNumber: 'CS21003', mid1: 78, mid2: 82, assignment: 85, endExam: 80 },
-    { id: '4', name: 'Sarah Wilson', rollNumber: 'CS21004', mid1: 88, mid2: 85, assignment: 87, endExam: 86 },
-    { id: '5', name: 'David Brown', rollNumber: 'CS21005', mid1: 95, mid2: 93, assignment: 96, endExam: 94 },
-  ];
+  useEffect(() => {
+    fetchStudents();
+    fetchSubjects();
+  }, [selectedBranch, selectedYear, selectedSemester]);
 
-  const [marks, setMarks] = useState(
-    students.reduce((acc, student) => {
-      acc[student.id] = {
-        mid1: student.mid1,
-        mid2: student.mid2,
-        assignment: student.assignment,
-        endExam: student.endExam
-      };
-      return acc;
-    }, {} as Record<string, Record<string, number>>)
-  );
+  useEffect(() => {
+    fetchMarks();
+  }, [selectedBranch, selectedYear, selectedSemester, selectedSubject]);
 
-  const updateMark = (studentId: string, examType: string, value: number) => {
+  const fetchStudents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select(`
+          id,
+          roll_number,
+          profiles:profile_id (
+            full_name
+          )
+        `)
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear))
+        .eq('semester', parseInt(selectedSemester))
+        .order('roll_number');
+
+      if (error) {
+        console.error('Error fetching students:', error);
+        return;
+      }
+
+      setStudents(data || []);
+    } catch (error) {
+      console.error('Error in fetchStudents:', error);
+    }
+  };
+
+  const fetchSubjects = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('subjects')
+        .select('name')
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear))
+        .eq('semester', parseInt(selectedSemester));
+
+      if (error) {
+        console.error('Error fetching subjects:', error);
+        return;
+      }
+
+      const subjectNames = [...new Set(data?.map(s => s.name) || [])];
+      setSubjects(subjectNames);
+      
+      if (subjectNames.length > 0 && !subjectNames.includes(selectedSubject)) {
+        setSelectedSubject(subjectNames[0]);
+      }
+    } catch (error) {
+      console.error('Error in fetchSubjects:', error);
+    }
+  };
+
+  const fetchMarks = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('marks')
+        .select('*')
+        .eq('subject', selectedSubject)
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear))
+        .eq('semester', parseInt(selectedSemester));
+
+      if (error) {
+        console.error('Error fetching marks:', error);
+        return;
+      }
+
+      const marksMap = {};
+      students.forEach(student => {
+        const mark = data?.find(m => m.student_id === student.id);
+        marksMap[student.id] = {
+          student_id: student.id,
+          mid1: mark?.mid1 || 0,
+          mid2: mark?.mid2 || 0,
+          assignment: mark?.assignment || 0,
+          total: mark?.total || 0
+        };
+      });
+      
+      setMarks(marksMap);
+    } catch (error) {
+      console.error('Error in fetchMarks:', error);
+    }
+  };
+
+  const updateMark = (studentId: string, field: string, value: number) => {
     setMarks(prev => ({
       ...prev,
       [studentId]: {
         ...prev[studentId],
-        [examType]: value
+        [field]: value
       }
     }));
   };
 
   const calculateTotal = (studentId: string) => {
     const studentMarks = marks[studentId];
-    return ((studentMarks.mid1 + studentMarks.mid2 + studentMarks.assignment + studentMarks.endExam) / 4).toFixed(1);
+    if (!studentMarks) return 0;
+    return ((studentMarks.mid1 + studentMarks.mid2 + studentMarks.assignment) / 3).toFixed(1);
   };
 
   const getGrade = (total: number) => {
@@ -56,18 +153,60 @@ export const AdminMarks: React.FC = () => {
     return 'F';
   };
 
-  const saveMarks = () => {
-    console.log('Saving marks:', {
-      branch: selectedBranch,
-      year: selectedYear,
-      semester: selectedSemester,
-      subject: selectedSubject,
-      marks
-    });
-    // In a real app, this would save to the database
+  const saveMarks = async () => {
+    setLoading(true);
+    try {
+      const marksToSave = Object.values(marks).map(mark => ({
+        student_id: mark.student_id,
+        subject: selectedSubject,
+        branch: selectedBranch,
+        year: parseInt(selectedYear),
+        semester: parseInt(selectedSemester),
+        mid1: mark.mid1,
+        mid2: mark.mid2,
+        assignment: mark.assignment
+      }));
+
+      // Delete existing marks for this subject/class
+      await supabase
+        .from('marks')
+        .delete()
+        .eq('subject', selectedSubject)
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear))
+        .eq('semester', parseInt(selectedSemester));
+
+      // Insert new marks
+      const { error } = await supabase
+        .from('marks')
+        .insert(marksToSave);
+
+      if (error) {
+        console.error('Error saving marks:', error);
+        toast({
+          title: "Error",
+          description: "Failed to save marks",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "Marks saved successfully",
+      });
+      
+      fetchMarks(); // Refresh to get updated totals
+    } catch (error) {
+      console.error('Error in saveMarks:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const classAverage = students.reduce((sum, student) => sum + parseFloat(calculateTotal(student.id)), 0) / students.length;
+  const classAverage = students.length > 0 
+    ? students.reduce((sum, student) => sum + parseFloat(calculateTotal(student.id)), 0) / students.length
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -128,11 +267,9 @@ export const AdminMarks: React.FC = () => {
                 <SelectValue placeholder="Subject" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Mathematics">Mathematics</SelectItem>
-                <SelectItem value="Physics">Physics</SelectItem>
-                <SelectItem value="Chemistry">Chemistry</SelectItem>
-                <SelectItem value="English">English</SelectItem>
-                <SelectItem value="Computer Science">Computer Science</SelectItem>
+                {subjects.map(subject => (
+                  <SelectItem key={subject} value={subject}>{subject}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -169,7 +306,7 @@ export const AdminMarks: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-purple-600">
-              {Math.max(...students.map(s => parseFloat(calculateTotal(s.id))))}
+              {students.length > 0 ? Math.max(...students.map(s => parseFloat(calculateTotal(s.id)))) : 0}
             </div>
             <p className="text-xs text-muted-foreground">Best performance</p>
           </CardContent>
@@ -182,7 +319,7 @@ export const AdminMarks: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-orange-600">
-              {Math.round((students.filter(s => parseFloat(calculateTotal(s.id)) >= 60).length / students.length) * 100)}%
+              {students.length > 0 ? Math.round((students.filter(s => parseFloat(calculateTotal(s.id)) >= 60).length / students.length) * 100) : 0}%
             </div>
             <p className="text-xs text-muted-foreground">Students passing</p>
           </CardContent>
@@ -198,9 +335,9 @@ export const AdminMarks: React.FC = () => {
                 {selectedSubject} - {selectedBranch} Year {selectedYear} Semester {selectedSemester}
               </CardDescription>
             </div>
-            <Button onClick={saveMarks}>
+            <Button onClick={saveMarks} disabled={loading}>
               <Save className="h-4 w-4 mr-2" />
-              Save Marks
+              {loading ? "Saving..." : "Save Marks"}
             </Button>
           </div>
         </CardHeader>
@@ -214,7 +351,6 @@ export const AdminMarks: React.FC = () => {
                   <th className="text-center p-3 font-medium">Mid-1 (25)</th>
                   <th className="text-center p-3 font-medium">Mid-2 (25)</th>
                   <th className="text-center p-3 font-medium">Assignment (25)</th>
-                  <th className="text-center p-3 font-medium">End Exam (25)</th>
                   <th className="text-center p-3 font-medium">Total</th>
                   <th className="text-center p-3 font-medium">Grade</th>
                 </tr>
@@ -224,8 +360,8 @@ export const AdminMarks: React.FC = () => {
                   const total = parseFloat(calculateTotal(student.id));
                   return (
                     <tr key={student.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3 font-medium">{student.name}</td>
-                      <td className="text-center p-3">{student.rollNumber}</td>
+                      <td className="p-3 font-medium">{student.profiles?.full_name}</td>
+                      <td className="text-center p-3">{student.roll_number}</td>
                       <td className="text-center p-3">
                         <Input
                           type="number"
@@ -253,16 +389,6 @@ export const AdminMarks: React.FC = () => {
                           max="100"
                           value={marks[student.id]?.assignment || ''}
                           onChange={(e) => updateMark(student.id, 'assignment', parseInt(e.target.value) || 0)}
-                          className="w-20 text-center"
-                        />
-                      </td>
-                      <td className="text-center p-3">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={marks[student.id]?.endExam || ''}
-                          onChange={(e) => updateMark(student.id, 'endExam', parseInt(e.target.value) || 0)}
                           className="w-20 text-center"
                         />
                       </td>

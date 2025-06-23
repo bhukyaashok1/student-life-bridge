@@ -1,9 +1,24 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Calendar, Users, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { supabase } from '../../integrations/supabase/client';
+import { useToast } from '../../components/ui/use-toast';
+
+interface Student {
+  id: string;
+  roll_number: string;
+  profiles: {
+    full_name: string;
+  };
+}
+
+interface AttendanceRecord {
+  student_id: string;
+  is_present: boolean;
+}
 
 export const AdminAttendance: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -11,30 +26,105 @@ export const AdminAttendance: React.FC = () => {
   const [selectedYear, setSelectedYear] = useState('3');
   const [selectedSection, setSelectedSection] = useState('A');
   const [selectedSubject, setSelectedSubject] = useState('Mathematics');
+  const [students, setStudents] = useState<Student[]>([]);
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [attendance, setAttendance] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
 
-  const students = [
-    { id: '1', name: 'John Doe', rollNumber: 'CS21001', isPresent: true },
-    { id: '2', name: 'Jane Smith', rollNumber: 'CS21002', isPresent: true },
-    { id: '3', name: 'Mike Johnson', rollNumber: 'CS21003', isPresent: false },
-    { id: '4', name: 'Sarah Wilson', rollNumber: 'CS21004', isPresent: true },
-    { id: '5', name: 'David Brown', rollNumber: 'CS21005', isPresent: false },
-    { id: '6', name: 'Emily Davis', rollNumber: 'CS21006', isPresent: true },
-    { id: '7', name: 'Robert Miller', rollNumber: 'CS21007', isPresent: true },
-    { id: '8', name: 'Lisa Garcia', rollNumber: 'CS21008', isPresent: false },
-  ];
+  useEffect(() => {
+    fetchStudents();
+    fetchSubjects();
+  }, [selectedBranch, selectedYear, selectedSection]);
 
-  const [attendance, setAttendance] = useState(
-    students.reduce((acc, student) => {
-      acc[student.id] = student.isPresent;
-      return acc;
-    }, {} as Record<string, boolean>)
-  );
+  useEffect(() => {
+    fetchAttendance();
+  }, [selectedDate, selectedBranch, selectedYear, selectedSection, selectedSubject]);
 
-  const attendanceStats = {
-    total: students.length,
-    present: Object.values(attendance).filter(Boolean).length,
-    absent: Object.values(attendance).filter(p => !p).length,
-    percentage: Math.round((Object.values(attendance).filter(Boolean).length / students.length) * 100)
+  const fetchStudents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select(`
+          id,
+          roll_number,
+          profiles:profile_id (
+            full_name
+          )
+        `)
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear))
+        .eq('section', selectedSection)
+        .order('roll_number');
+
+      if (error) {
+        console.error('Error fetching students:', error);
+        return;
+      }
+
+      setStudents(data || []);
+      
+      // Initialize attendance for new students
+      const initialAttendance = {};
+      data?.forEach(student => {
+        initialAttendance[student.id] = false;
+      });
+      setAttendance(initialAttendance);
+    } catch (error) {
+      console.error('Error in fetchStudents:', error);
+    }
+  };
+
+  const fetchSubjects = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('subjects')
+        .select('name')
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear));
+
+      if (error) {
+        console.error('Error fetching subjects:', error);
+        return;
+      }
+
+      const subjectNames = [...new Set(data?.map(s => s.name) || [])];
+      setSubjects(subjectNames);
+      
+      if (subjectNames.length > 0 && !subjectNames.includes(selectedSubject)) {
+        setSelectedSubject(subjectNames[0]);
+      }
+    } catch (error) {
+      console.error('Error in fetchSubjects:', error);
+    }
+  };
+
+  const fetchAttendance = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('student_id, is_present')
+        .eq('date', selectedDate)
+        .eq('subject', selectedSubject)
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear))
+        .eq('section', selectedSection);
+
+      if (error) {
+        console.error('Error fetching attendance:', error);
+        return;
+      }
+
+      const attendanceMap = {};
+      students.forEach(student => {
+        const record = data?.find(a => a.student_id === student.id);
+        attendanceMap[student.id] = record ? record.is_present : false;
+      });
+      
+      setAttendance(attendanceMap);
+    } catch (error) {
+      console.error('Error in fetchAttendance:', error);
+    }
   };
 
   const markAttendance = (studentId: string, isPresent: boolean) => {
@@ -60,16 +150,60 @@ export const AdminAttendance: React.FC = () => {
     setAttendance(newAttendance);
   };
 
-  const saveAttendance = () => {
-    console.log('Saving attendance:', {
-      date: selectedDate,
-      branch: selectedBranch,
-      year: selectedYear,
-      section: selectedSection,
-      subject: selectedSubject,
-      attendance
-    });
-    // In a real app, this would save to the database
+  const saveAttendance = async () => {
+    setLoading(true);
+    try {
+      // Delete existing attendance for this date/subject/class
+      await supabase
+        .from('attendance')
+        .delete()
+        .eq('date', selectedDate)
+        .eq('subject', selectedSubject)
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear))
+        .eq('section', selectedSection);
+
+      // Insert new attendance records
+      const attendanceRecords = students.map(student => ({
+        student_id: student.id,
+        date: selectedDate,
+        subject: selectedSubject,
+        branch: selectedBranch,
+        year: parseInt(selectedYear),
+        section: selectedSection,
+        is_present: attendance[student.id] || false
+      }));
+
+      const { error } = await supabase
+        .from('attendance')
+        .insert(attendanceRecords);
+
+      if (error) {
+        console.error('Error saving attendance:', error);
+        toast({
+          title: "Error",
+          description: "Failed to save attendance",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "Attendance saved successfully",
+      });
+    } catch (error) {
+      console.error('Error in saveAttendance:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const attendanceStats = {
+    total: students.length,
+    present: Object.values(attendance).filter(Boolean).length,
+    absent: Object.values(attendance).filter(p => !p).length,
+    percentage: students.length > 0 ? Math.round((Object.values(attendance).filter(Boolean).length / students.length) * 100) : 0
   };
 
   return (
@@ -136,11 +270,9 @@ export const AdminAttendance: React.FC = () => {
                 <SelectValue placeholder="Subject" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Mathematics">Mathematics</SelectItem>
-                <SelectItem value="Physics">Physics</SelectItem>
-                <SelectItem value="Chemistry">Chemistry</SelectItem>
-                <SelectItem value="English">English</SelectItem>
-                <SelectItem value="Computer Science">Computer Science</SelectItem>
+                {subjects.map(subject => (
+                  <SelectItem key={subject} value={subject}>{subject}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -211,8 +343,8 @@ export const AdminAttendance: React.FC = () => {
                 <XCircle className="h-4 w-4 mr-2" />
                 Mark All Absent
               </Button>
-              <Button onClick={saveAttendance}>
-                Save Attendance
+              <Button onClick={saveAttendance} disabled={loading}>
+                {loading ? "Saving..." : "Save Attendance"}
               </Button>
             </div>
           </div>
@@ -224,12 +356,12 @@ export const AdminAttendance: React.FC = () => {
                 <div className="flex items-center space-x-4">
                   <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
                     <span className="text-sm font-medium text-gray-600">
-                      {student.name.split(' ').map(n => n[0]).join('')}
+                      {student.profiles?.full_name?.split(' ').map(n => n[0]).join('') || 'N/A'}
                     </span>
                   </div>
                   <div>
-                    <h4 className="font-medium text-gray-900">{student.name}</h4>
-                    <p className="text-sm text-gray-600">{student.rollNumber}</p>
+                    <h4 className="font-medium text-gray-900">{student.profiles?.full_name}</h4>
+                    <p className="text-sm text-gray-600">{student.roll_number}</p>
                   </div>
                 </div>
                 
