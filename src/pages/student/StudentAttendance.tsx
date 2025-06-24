@@ -20,43 +20,48 @@ interface SubjectAttendance {
 }
 
 export const StudentAttendance: React.FC = () => {
-  const { studentData } = useAuth();
+  const { studentData, loading: authLoading } = useAuth();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [subjectAttendance, setSubjectAttendance] = useState<SubjectAttendance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (studentData) {
+    if (studentData && !authLoading) {
       fetchAttendanceData();
     }
-  }, [studentData]);
+  }, [studentData, authLoading]);
 
   const fetchAttendanceData = async () => {
     if (!studentData) return;
 
     try {
       setLoading(true);
+      setError(null);
+      
+      console.log('Fetching attendance for student:', studentData.id);
       
       // Fetch attendance records for the student
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance')
         .select('*')
         .eq('student_id', studentData.id)
-        .order('date', { ascending: false })
-        .limit(10);
+        .order('date', { ascending: false });
 
       if (attendanceError) {
         console.error('Error fetching attendance:', attendanceError);
+        setError('Failed to fetch attendance data');
         return;
       }
 
       console.log('Fetched attendance data:', attendanceData);
-      setAttendanceRecords(attendanceData || []);
+      const records = attendanceData || [];
+      setAttendanceRecords(records);
 
       // Calculate subject-wise attendance
       const subjectMap = new Map<string, { attended: number; total: number }>();
       
-      (attendanceData || []).forEach(record => {
+      records.forEach(record => {
         if (!subjectMap.has(record.subject)) {
           subjectMap.set(record.subject, { attended: 0, total: 0 });
         }
@@ -80,12 +85,13 @@ export const StudentAttendance: React.FC = () => {
       setSubjectAttendance(subjectAttendanceData);
     } catch (error) {
       console.error('Error in fetchAttendanceData:', error);
+      setError('An unexpected error occurred');
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="space-y-6">
         <div>
@@ -96,12 +102,29 @@ export const StudentAttendance: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Attendance</h1>
+          <p className="text-red-600">{error}</p>
+          <button 
+            onClick={fetchAttendanceData}
+            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!studentData) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Attendance</h1>
-          <p className="text-gray-600">Please complete your profile to view attendance</p>
+          <p className="text-gray-600">Unable to load student data. Please try refreshing the page.</p>
         </div>
       </div>
     );
@@ -202,7 +225,10 @@ export const StudentAttendance: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-center">No attendance records found</p>
+              <div className="text-center py-8">
+                <p className="text-gray-500">No attendance records found</p>
+                <p className="text-sm text-gray-400 mt-2">Your attendance will appear here once classes begin</p>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -232,7 +258,10 @@ export const StudentAttendance: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-center">No recent attendance records</p>
+              <div className="text-center py-8">
+                <p className="text-gray-500">No recent attendance records</p>
+                <p className="text-sm text-gray-400 mt-2">Your recent attendance will appear here</p>
+              </div>
             )}
           </CardContent>
         </Card>

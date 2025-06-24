@@ -14,25 +14,36 @@ interface TimetableEntry {
 }
 
 export const StudentTimetable: React.FC = () => {
-  const { studentData } = useAuth();
+  const { studentData, loading: authLoading } = useAuth();
   const [selectedWeek, setSelectedWeek] = useState('current');
   const [timetableData, setTimetableData] = useState<Record<string, TimetableEntry[]>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const timeSlots = ["09:00-10:00", "10:00-11:00", "11:30-12:30", "01:30-02:30", "02:30-03:30"];
 
   useEffect(() => {
-    if (studentData) {
+    if (studentData && !authLoading) {
       fetchTimetable();
     }
-  }, [studentData]);
+  }, [studentData, authLoading]);
 
   const fetchTimetable = async () => {
     if (!studentData) return;
 
     try {
-      const { data, error } = await supabase
+      setLoading(true);
+      setError(null);
+      
+      console.log('Fetching timetable for:', {
+        branch: studentData.branch,
+        year: studentData.year,
+        semester: studentData.semester,
+        section: studentData.section
+      });
+
+      const { data, error: fetchError } = await supabase
         .from('timetables')
         .select('*')
         .eq('branch', studentData.branch)
@@ -42,10 +53,13 @@ export const StudentTimetable: React.FC = () => {
         .order('day_of_week')
         .order('time_slot');
 
-      if (error) {
-        console.error('Error fetching timetable:', error);
+      if (fetchError) {
+        console.error('Error fetching timetable:', fetchError);
+        setError('Failed to fetch timetable data');
         return;
       }
+
+      console.log('Fetched timetable data:', data);
 
       // Group by day
       const groupedData: Record<string, TimetableEntry[]> = {};
@@ -56,6 +70,7 @@ export const StudentTimetable: React.FC = () => {
       setTimetableData(groupedData);
     } catch (error) {
       console.error('Error in fetchTimetable:', error);
+      setError('An unexpected error occurred');
     } finally {
       setLoading(false);
     }
@@ -67,6 +82,7 @@ export const StudentTimetable: React.FC = () => {
       'Physics': 'bg-green-100 text-green-800 border-green-200',
       'Chemistry': 'bg-purple-100 text-purple-800 border-purple-200',
       'English': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      'Programming': 'bg-red-100 text-red-800 border-red-200',
       'Computer Science': 'bg-red-100 text-red-800 border-red-200',
       'Physics Lab': 'bg-green-200 text-green-900 border-green-300',
       'Chemistry Lab': 'bg-purple-200 text-purple-900 border-purple-300',
@@ -86,7 +102,7 @@ export const StudentTimetable: React.FC = () => {
     return todayClasses.length > 0 ? todayClasses[0] : null;
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="space-y-6">
         <div>
@@ -97,12 +113,29 @@ export const StudentTimetable: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Timetable</h1>
+          <p className="text-red-600">{error}</p>
+          <button 
+            onClick={fetchTimetable}
+            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!studentData) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Timetable</h1>
-          <p className="text-gray-600">Please complete your profile to view timetable</p>
+          <p className="text-gray-600">Unable to load student data. Please try refreshing the page.</p>
         </div>
       </div>
     );

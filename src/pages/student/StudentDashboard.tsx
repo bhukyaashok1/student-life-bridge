@@ -1,18 +1,72 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { useAuth } from '../../context/AuthContext';
-import { Calendar, BookOpen, Award, Bell, FileText, Clock } from 'lucide-react';
+import { Calendar, BookOpen, Award, Bell, FileText, Clock, TrendingUp } from 'lucide-react';
+import { supabase } from '../../integrations/supabase/client';
+
+interface AttendanceData {
+  totalAttended: number;
+  totalClasses: number;
+  percentage: number;
+}
 
 export const StudentDashboard: React.FC = () => {
   const { profile, studentData } = useAuth();
+  const [attendanceData, setAttendanceData] = useState<AttendanceData>({ totalAttended: 0, totalClasses: 0, percentage: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (studentData) {
+      fetchDashboardData();
+    }
+  }, [studentData]);
+
+  const fetchDashboardData = async () => {
+    if (!studentData) return;
+
+    try {
+      // Fetch attendance data
+      const { data: attendanceRecords, error } = await supabase
+        .from('attendance')
+        .select('is_present')
+        .eq('student_id', studentData.id);
+
+      if (!error && attendanceRecords) {
+        const totalClasses = attendanceRecords.length;
+        const totalAttended = attendanceRecords.filter(record => record.is_present).length;
+        const percentage = totalClasses > 0 ? Math.round((totalAttended / totalClasses) * 100) : 0;
+        
+        setAttendanceData({
+          totalAttended,
+          totalClasses,
+          percentage
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!profile || !studentData) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600">Loading your dashboard...</p>
+          <p className="text-gray-600">Unable to load profile data. Please try refreshing the page.</p>
         </div>
       </div>
     );
@@ -113,26 +167,43 @@ export const StudentDashboard: React.FC = () => {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium">Attendance Rate</span>
-                <span className="text-sm text-green-600 font-semibold">87%</span>
+                <span className={`text-sm font-semibold ${
+                  attendanceData.percentage >= 75 ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {attendanceData.percentage}%
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div className="bg-green-600 h-2 rounded-full" style={{ width: '87%' }}></div>
+                <div 
+                  className={`h-2 rounded-full ${
+                    attendanceData.percentage >= 75 ? 'bg-green-600' : 'bg-red-600'
+                  }`} 
+                  style={{ width: `${attendanceData.percentage}%` }}
+                ></div>
               </div>
               
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">Assignments Completed</span>
-                <span className="text-sm text-blue-600 font-semibold">12/15</span>
+                <span className="text-sm font-medium">Classes Attended</span>
+                <span className="text-sm text-blue-600 font-semibold">
+                  {attendanceData.totalAttended}/{attendanceData.totalClasses}
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div className="bg-blue-600 h-2 rounded-full" style={{ width: '80%' }}></div>
+                <div 
+                  className="bg-blue-600 h-2 rounded-full" 
+                  style={{ width: `${attendanceData.totalClasses > 0 ? (attendanceData.totalAttended / attendanceData.totalClasses) * 100 : 0}%` }}
+                ></div>
               </div>
               
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">Course Progress</span>
-                <span className="text-sm text-purple-600 font-semibold">65%</span>
+                <span className="text-sm font-medium">Current Performance</span>
+                <span className="text-sm text-purple-600 font-semibold">CGPA: {studentData.cgpa}</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div className="bg-purple-600 h-2 rounded-full" style={{ width: '65%' }}></div>
+                <div 
+                  className="bg-purple-600 h-2 rounded-full" 
+                  style={{ width: `${(studentData.cgpa / 10) * 100}%` }}
+                ></div>
               </div>
             </div>
           </CardContent>

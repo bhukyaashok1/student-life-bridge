@@ -17,29 +17,33 @@ interface StudentMark {
 }
 
 export const StudentMarks: React.FC = () => {
-  const { studentData } = useAuth();
+  const { studentData, loading: authLoading } = useAuth();
   const [selectedSemester, setSelectedSemester] = useState('');
   const [marks, setMarks] = useState<StudentMark[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (studentData) {
+    if (studentData && !authLoading) {
       setSelectedSemester(studentData.semester.toString());
       fetchMarks();
     }
-  }, [studentData]);
+  }, [studentData, authLoading]);
 
   useEffect(() => {
-    if (studentData && selectedSemester) {
+    if (studentData && selectedSemester && !authLoading) {
       fetchMarks();
     }
-  }, [selectedSemester, studentData]);
+  }, [selectedSemester, studentData, authLoading]);
 
   const fetchMarks = async () => {
     if (!studentData) return;
 
     try {
       setLoading(true);
+      setError(null);
+      
+      console.log('Fetching marks for student:', studentData.id);
       
       // Fetch marks for the student
       const { data: marksData, error: marksError } = await supabase
@@ -51,6 +55,7 @@ export const StudentMarks: React.FC = () => {
 
       if (marksError) {
         console.error('Error fetching marks:', marksError);
+        setError('Failed to fetch marks data');
         return;
       }
 
@@ -58,12 +63,13 @@ export const StudentMarks: React.FC = () => {
       setMarks(marksData || []);
     } catch (error) {
       console.error('Error in fetchMarks:', error);
+      setError('An unexpected error occurred');
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="space-y-6">
         <div>
@@ -74,12 +80,29 @@ export const StudentMarks: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Marks & Grades</h1>
+          <p className="text-red-600">{error}</p>
+          <button 
+            onClick={fetchMarks}
+            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!studentData) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Marks & Grades</h1>
-          <p className="text-gray-600">Please complete your profile to view marks</p>
+          <p className="text-gray-600">Unable to load student data. Please try refreshing the page.</p>
         </div>
       </div>
     );

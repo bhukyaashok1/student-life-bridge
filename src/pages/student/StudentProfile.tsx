@@ -5,14 +5,31 @@ import { useAuth } from '../../context/AuthContext';
 import { User, Mail, Phone, MapPin, GraduationCap, BookOpen, Award } from 'lucide-react';
 
 export const StudentProfile: React.FC = () => {
-  const { profile, studentData } = useAuth();
+  const { profile, studentData, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
+          <p className="text-gray-600">Loading your profile information...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!profile || !studentData) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
-          <p className="text-gray-600">Loading your profile information...</p>
+          <p className="text-gray-600 mb-4">Unable to load profile data. Please try refreshing the page.</p>
+          <div className="text-sm text-gray-500">
+            <p>Debug info:</p>
+            <p>Profile loaded: {profile ? 'Yes' : 'No'}</p>
+            <p>Student data loaded: {studentData ? 'Yes' : 'No'}</p>
+            <p>Loading state: {loading ? 'Yes' : 'No'}</p>
+          </div>
         </div>
       </div>
     );
@@ -37,7 +54,7 @@ export const StudentProfile: React.FC = () => {
                 <User className="h-5 w-5 text-gray-400" />
                 <div>
                   <p className="text-sm font-medium text-gray-500">Name</p>
-                  <p className="text-lg">{profile.full_name}</p>
+                  <p className="text-lg">{profile.full_name || 'Not provided'}</p>
                 </div>
               </div>
               
@@ -45,7 +62,7 @@ export const StudentProfile: React.FC = () => {
                 <GraduationCap className="h-5 w-5 text-gray-400" />
                 <div>
                   <p className="text-sm font-medium text-gray-500">Roll Number</p>
-                  <p className="text-lg">{studentData.roll_number}</p>
+                  <p className="text-lg">{studentData.roll_number || 'Not assigned'}</p>
                 </div>
               </div>
               
@@ -53,7 +70,7 @@ export const StudentProfile: React.FC = () => {
                 <Mail className="h-5 w-5 text-gray-400" />
                 <div>
                   <p className="text-sm font-medium text-gray-500">Email</p>
-                  <p className="text-lg">{profile.email}</p>
+                  <p className="text-lg">{profile.email || 'Not provided'}</p>
                 </div>
               </div>
               
@@ -91,19 +108,19 @@ export const StudentProfile: React.FC = () => {
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm font-medium text-gray-500">Branch</p>
-                <p className="text-lg">{studentData.branch}</p>
+                <p className="text-lg">{studentData.branch || 'Not assigned'}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Section</p>
-                <p className="text-lg">{studentData.section}</p>
+                <p className="text-lg">{studentData.section || 'Not assigned'}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Year</p>
-                <p className="text-lg">{studentData.year}</p>
+                <p className="text-lg">{studentData.year || 'Not assigned'}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Semester</p>
-                <p className="text-lg">{studentData.semester}</p>
+                <p className="text-lg">{studentData.semester || 'Not assigned'}</p>
               </div>
             </CardContent>
           </Card>
@@ -118,11 +135,11 @@ export const StudentProfile: React.FC = () => {
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm font-medium text-gray-500">Current SGPA</p>
-                <p className="text-2xl font-bold text-green-600">{studentData.sgpa}</p>
+                <p className="text-2xl font-bold text-green-600">{studentData.sgpa || '0.00'}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Overall CGPA</p>
-                <p className="text-2xl font-bold text-blue-600">{studentData.cgpa}</p>
+                <p className="text-2xl font-bold text-blue-600">{studentData.cgpa || '0.00'}</p>
               </div>
             </CardContent>
           </Card>
