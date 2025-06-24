@@ -70,10 +70,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (profileError) {
         console.error('Error fetching profile:', profileError);
+        return;
+      }
+
+      if (!profileData) {
+        console.error('No profile found for user:', userId);
         return;
       }
 
@@ -83,18 +88,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // If student, fetch student data
       if (profileData.user_type === 'student') {
+        console.log('Fetching student data for profile_id:', profileData.id);
+        
         const { data: studentInfo, error: studentError } = await supabase
           .from('students')
           .select('*')
           .eq('profile_id', profileData.id)
-          .single();
+          .maybeSingle();
 
         if (studentError) {
           console.error('Error fetching student data:', studentError);
-        } else {
-          console.log('Student data:', studentInfo);
-          setStudentData(studentInfo);
+          return;
         }
+
+        if (!studentInfo) {
+          console.log('No student record found for profile:', profileData.id);
+          // You might want to create a default student record here or redirect to setup
+          setStudentData(null);
+          return;
+        }
+
+        console.log('Student data:', studentInfo);
+        setStudentData(studentInfo);
       }
     } catch (error) {
       console.error('Error in fetchUserData:', error);
@@ -223,14 +238,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (profileError) {
         console.error('Profile creation error:', profileError);
-        
-        // Clean up auth user if profile creation fails
-        try {
-          await supabase.auth.admin.deleteUser(authData.user.id);
-        } catch (cleanupError) {
-          console.error('Error cleaning up user:', cleanupError);
-        }
-        
         return { error: profileError };
       }
 
@@ -252,15 +259,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (studentError) {
         console.error('Student data creation error:', studentError);
-        
-        // Clean up profile and auth user if student creation fails
-        try {
-          await supabase.from('profiles').delete().eq('id', newProfile.id);
-          await supabase.auth.admin.deleteUser(authData.user.id);
-        } catch (cleanupError) {
-          console.error('Error cleaning up:', cleanupError);
-        }
-        
         return { error: studentError };
       }
 
