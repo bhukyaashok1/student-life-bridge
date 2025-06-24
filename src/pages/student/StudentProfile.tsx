@@ -21,7 +21,7 @@ export const StudentProfile: React.FC = () => {
         .from('students')
         .insert({
           profile_id: profile.id,
-          roll_number: 'TEMP001', // Temporary roll number
+          roll_number: `TEMP${Date.now()}`, // Generate a temporary unique roll number
           branch: 'CSE',
           section: 'A',
           year: 1,
@@ -61,7 +61,7 @@ export const StudentProfile: React.FC = () => {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
-          <p className="text-gray-600 mb-4">Unable to load profile data. Please try refreshing the page.</p>
+          <p className="text-gray-600 mb-4">Unable to load profile data. Please try refreshing the page or contact support.</p>
         </div>
       </div>
     );

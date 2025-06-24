@@ -61,39 +61,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const ADMIN_EMAIL = 'bhukyaashoknayak87@gmail.com';
   const ADMIN_PASSWORD = 'Ashoknayak7@';
 
-  const fetchUserData = async (userId: string) => {
+  const createDefaultProfile = async (userId: string, userEmail: string) => {
+    try {
+      console.log('Creating default profile for user:', userId);
+      
+      const { data: newProfile, error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          user_id: userId,
+          full_name: userEmail.split('@')[0], // Use email prefix as default name
+          email: userEmail,
+          phone: null,
+          address: null,
+          user_type: 'student'
+        })
+        .select()
+        .single();
+
+      if (profileError) {
+        console.error('Error creating default profile:', profileError);
+        return null;
+      }
+
+      console.log('Default profile created:', newProfile);
+      return newProfile;
+    } catch (error) {
+      console.error('Error in createDefaultProfile:', error);
+      return null;
+    }
+  };
+
+  const fetchUserData = async (userId: string, userEmail: string) => {
     try {
       console.log('Fetching user data for:', userId);
       
-      // Fetch profile
+      // Fetch profile - use maybeSingle to handle missing profiles
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (profileError) {
         console.error('Error fetching profile:', profileError);
         return;
       }
 
-      if (!profileData) {
-        console.error('No profile found for user:', userId);
-        return;
+      let currentProfile = profileData;
+
+      // If no profile exists, create a default one
+      if (!currentProfile) {
+        console.log('No profile found, creating default profile...');
+        currentProfile = await createDefaultProfile(userId, userEmail);
+        
+        if (!currentProfile) {
+          console.error('Failed to create default profile');
+          return;
+        }
       }
 
-      console.log('Profile data:', profileData);
-      setProfile(profileData as StudentProfile);
-      setUserType(profileData.user_type as 'student' | 'admin');
+      console.log('Profile data:', currentProfile);
+      setProfile(currentProfile as StudentProfile);
+      setUserType(currentProfile.user_type as 'student' | 'admin');
 
       // If student, fetch student data
-      if (profileData.user_type === 'student') {
-        console.log('Fetching student data for profile_id:', profileData.id);
+      if (currentProfile.user_type === 'student') {
+        console.log('Fetching student data for profile_id:', currentProfile.id);
         
         const { data: studentInfo, error: studentError } = await supabase
           .from('students')
           .select('*')
-          .eq('profile_id', profileData.id)
+          .eq('profile_id', currentProfile.id)
           .maybeSingle();
 
         if (studentError) {
@@ -103,7 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (!studentInfo) {
-          console.log('No student record found for profile:', profileData.id);
+          console.log('No student record found for profile:', currentProfile.id);
           setStudentData(null);
           return;
         }
@@ -147,7 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (currentSession) {
           setSession(currentSession);
           setUser(currentSession.user);
-          await fetchUserData(currentSession.user.id);
+          await fetchUserData(currentSession.user.id, currentSession.user.email || '');
         }
         
         setLoading(false);
@@ -180,7 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(session?.user ?? null);
         
         if (session?.user && event !== 'SIGNED_OUT') {
-          await fetchUserData(session.user.id);
+          await fetchUserData(session.user.id, session.user.email || '');
         } else {
           setProfile(null);
           setStudentData(null);
