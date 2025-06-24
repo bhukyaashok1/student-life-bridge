@@ -70,7 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
-        .maybeSingle();
+        .single();
 
       if (profileError) {
         console.error('Error fetching profile:', profileError);
@@ -98,12 +98,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (studentError) {
           console.error('Error fetching student data:', studentError);
+          setStudentData(null);
           return;
         }
 
         if (!studentInfo) {
           console.log('No student record found for profile:', profileData.id);
-          // You might want to create a default student record here or redirect to setup
           setStudentData(null);
           return;
         }
@@ -199,12 +199,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('Starting signup process...');
       
-      // First, sign up the user
+      // Sign up the user without email confirmation
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            email_confirm: false // Disable email confirmation
+          }
         }
       });
 
@@ -263,6 +266,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       console.log('Signup completed successfully');
+      
+      // Auto-sign in the user after successful signup
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (signInError) {
+        console.error('Auto sign-in error:', signInError);
+        // Still return success since signup was successful
+      }
+
       return { error: null };
     } catch (error) {
       console.error('Signup error:', error);

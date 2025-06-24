@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -168,8 +167,14 @@ export const LoginForm: React.FC = () => {
       if (error) {
         setErrors({ submit: error.message });
       } else {
-        alert('Registration successful! Please check your email to verify your account.');
+        // Success message - no email verification needed
+        alert('Registration successful! You can now login with your credentials.');
         setActiveTab('student-login');
+        // Pre-fill login form
+        setStudentLoginData({
+          email: studentSignupData.email,
+          password: ''
+        });
       }
     } catch (error) {
       setErrors({ submit: 'An unexpected error occurred' });
