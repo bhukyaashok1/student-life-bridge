@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
+import { toast } from 'react-toastify';
 
 interface StudentProfile {
   id: string;
@@ -34,6 +35,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, profileData: any, studentData: any) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
+  checkUserExists: (email: string) => Promise<boolean>;
   isAuthenticated: boolean;
   loading: boolean;
 }
@@ -61,41 +63,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const ADMIN_EMAIL = 'bhukyaashoknayak87@gmail.com';
   const ADMIN_PASSWORD = 'Ashoknayak7@';
 
-  const createDefaultProfile = async (userId: string, userEmail: string) => {
-    try {
-      console.log('Creating default profile for user:', userId);
-      
-      const { data: newProfile, error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          user_id: userId,
-          full_name: userEmail.split('@')[0], // Use email prefix as default name
-          email: userEmail,
-          phone: null,
-          address: null,
-          user_type: 'student'
-        })
-        .select()
-        .single();
-
-      if (profileError) {
-        console.error('Error creating default profile:', profileError);
-        return null;
-      }
-
-      console.log('Default profile created:', newProfile);
-      return newProfile;
-    } catch (error) {
-      console.error('Error in createDefaultProfile:', error);
-      return null;
-    }
-  };
-
   const fetchUserData = async (userId: string, userEmail: string) => {
     try {
       console.log('Fetching user data for:', userId);
       
-      // Fetch profile - use maybeSingle to handle missing profiles
+      // Fetch profile
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -104,44 +76,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (profileError) {
         console.error('Error fetching profile:', profileError);
+        toast.error('Error loading profile data');
         return;
       }
 
-      let currentProfile = profileData;
-
-      // If no profile exists, create a default one
-      if (!currentProfile) {
-        console.log('No profile found, creating default profile...');
-        currentProfile = await createDefaultProfile(userId, userEmail);
-        
-        if (!currentProfile) {
-          console.error('Failed to create default profile');
-          return;
-        }
+      if (!profileData) {
+        console.error('No profile found for user:', userId);
+        toast.error('Profile not found. Please contact support.');
+        return;
       }
 
-      console.log('Profile data:', currentProfile);
-      setProfile(currentProfile as StudentProfile);
-      setUserType(currentProfile.user_type as 'student' | 'admin');
+      console.log('Profile data:', profileData);
+      setProfile(profileData as StudentProfile);
+      setUserType(profileData.user_type as 'student' | 'admin');
 
       // If student, fetch student data
-      if (currentProfile.user_type === 'student') {
-        console.log('Fetching student data for profile_id:', currentProfile.id);
+      if (profileData.user_type === 'student') {
+        console.log('Fetching student data for profile_id:', profileData.id);
         
         const { data: studentInfo, error: studentError } = await supabase
           .from('students')
           .select('*')
-          .eq('profile_id', currentProfile.id)
+          .eq('profile_id', profileData.id)
           .maybeSingle();
 
         if (studentError) {
           console.error('Error fetching student data:', studentError);
+          toast.error('Error loading student data');
           setStudentData(null);
           return;
         }
 
         if (!studentInfo) {
-          console.log('No student record found for profile:', currentProfile.id);
+          console.log('No student record found for profile:', profileData.id);
           setStudentData(null);
           return;
         }
@@ -151,6 +118,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (error) {
       console.error('Error in fetchUserData:', error);
+      toast.error('Unexpected error occurred while loading user data');
+    }
+  };
+
+  const checkUserExists = async (email: string): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error checking user existence:', error);
+        return false;
+      }
+
+      return !!data;
+    } catch (error) {
+      console.error('Error in checkUserExists:', error);
+      return false;
     }
   };
 
@@ -237,6 +225,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('Starting signup process...');
       
+      // Check if user already exists
+      const userExists = await checkUserExists(email);
+      if (userExists) {
+        toast.error('An account with this email already exists. Please try logging in.');
+        return { error: { message: 'User already exists' } };
+      }
+
       // Sign up the user without email confirmation
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -244,17 +239,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         options: {
           emailRedirectTo: `${window.location.origin}/`,
           data: {
-            email_confirm: false // Disable email confirmation
+            email_confirm: false
           }
         }
       });
 
       if (authError) {
         console.error('Auth signup error:', authError);
+        toast.error(authError.message || 'Failed to create account');
         return { error: authError };
       }
 
       if (!authData.user) {
+        toast.error('Failed to create user account');
         return { error: { message: 'Failed to create user' } };
       }
 
@@ -279,6 +276,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (profileError) {
         console.error('Profile creation error:', profileError);
+        toast.error('Failed to create user profile');
         return { error: profileError };
       }
 
@@ -300,25 +298,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (studentError) {
         console.error('Student data creation error:', studentError);
+        toast.error('Failed to create student record');
         return { error: studentError };
       }
 
       console.log('Signup completed successfully');
+      toast.success('Account created successfully! You can now log in.');
       
-      // Auto-sign in the user after successful signup
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (signInError) {
-        console.error('Auto sign-in error:', signInError);
-        // Still return success since signup was successful
-      }
-
       return { error: null };
     } catch (error) {
       console.error('Signup error:', error);
+      toast.error('An unexpected error occurred during signup');
       return { error };
     }
   };
@@ -353,15 +343,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfile(mockAdminProfile);
         setUserType('admin');
         setStudentData(null);
-        
-        // Store admin session in localStorage
+
         localStorage.setItem('admin_session', JSON.stringify({
           user: mockAdminUser,
           profile: mockAdminProfile
         }));
 
         console.log('Admin login successful');
+        toast.success('Welcome, Admin!');
         return { error: null };
+      }
+
+      // For student login, first check if user exists in our database
+      const userExists = await checkUserExists(email);
+      if (!userExists) {
+        toast.error('No account found with this email. Please sign up first.');
+        return { error: { message: 'User not found' } };
       }
 
       // Regular student login
@@ -373,13 +370,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         console.error('Student login error:', error);
+        if (error.message.includes('Invalid login credentials')) {
+          toast.error('Invalid email or password. Please check your credentials.');
+        } else {
+          toast.error(error.message || 'Login failed');
+        }
         return { error };
       }
 
       console.log('Student login successful');
+      toast.success('Login successful! Welcome back.');
       return { error: null };
     } catch (error) {
       console.error('Sign in error:', error);
+      toast.error('An unexpected error occurred during login');
       return { error };
     }
   };
@@ -401,9 +405,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setStudentData(null);
       setUserType(null);
       
+      toast.success('Logged out successfully');
       console.log('Sign out completed');
     } catch (error) {
       console.error('Sign out error:', error);
+      toast.error('Error during logout');
     }
   };
 
@@ -416,6 +422,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signUp,
     signIn,
     signOut,
+    checkUserExists,
     isAuthenticated: !!user,
     loading
   };

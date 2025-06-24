@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -7,13 +8,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 export const LoginForm: React.FC = () => {
-  const { signIn, signUp, isAuthenticated, userType, loading } = useAuth();
+  const { signIn, signUp, checkUserExists, isAuthenticated, userType, loading } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('student-login');
   const [submitLoading, setSubmitLoading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showSignupPrompt, setShowSignupPrompt] = useState(false);
+  const [attemptedEmail, setAttemptedEmail] = useState('');
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -56,40 +59,67 @@ export const LoginForm: React.FC = () => {
   });
 
   const validateStudentLogin = () => {
-    const newErrors: Record<string, string> = {};
-    if (!studentLoginData.email) newErrors.email = 'Email is required';
-    if (!studentLoginData.password) newErrors.password = 'Password is required';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (!studentLoginData.email) {
+      toast.error('Email is required');
+      return false;
+    }
+    if (!studentLoginData.password) {
+      toast.error('Password is required');
+      return false;
+    }
+    return true;
   };
 
   const validateAdminLogin = () => {
-    const newErrors: Record<string, string> = {};
-    if (!adminLoginData.email) newErrors.email = 'Email is required';
-    if (!adminLoginData.password) newErrors.password = 'Password is required';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (!adminLoginData.email) {
+      toast.error('Email is required');
+      return false;
+    }
+    if (!adminLoginData.password) {
+      toast.error('Password is required');
+      return false;
+    }
+    return true;
   };
 
   const validateStudentSignup = () => {
-    const newErrors: Record<string, string> = {};
-    
-    if (!studentSignupData.full_name) newErrors.full_name = 'Full name is required';
-    if (!studentSignupData.email) newErrors.email = 'Email is required';
+    if (!studentSignupData.full_name) {
+      toast.error('Full name is required');
+      return false;
+    }
+    if (!studentSignupData.email) {
+      toast.error('Email is required');
+      return false;
+    }
     if (!studentSignupData.password || studentSignupData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+      toast.error('Password must be at least 6 characters');
+      return false;
     }
     if (studentSignupData.password !== studentSignupData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
+      toast.error('Passwords do not match');
+      return false;
     }
-    if (!studentSignupData.roll_number) newErrors.roll_number = 'Roll number is required';
-    if (!studentSignupData.branch) newErrors.branch = 'Branch is required';
-    if (!studentSignupData.section) newErrors.section = 'Section is required';
-    if (!studentSignupData.year) newErrors.year = 'Year is required';
-    if (!studentSignupData.semester) newErrors.semester = 'Semester is required';
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (!studentSignupData.roll_number) {
+      toast.error('Roll number is required');
+      return false;
+    }
+    if (!studentSignupData.branch) {
+      toast.error('Branch is required');
+      return false;
+    }
+    if (!studentSignupData.section) {
+      toast.error('Section is required');
+      return false;
+    }
+    if (!studentSignupData.year) {
+      toast.error('Year is required');
+      return false;
+    }
+    if (!studentSignupData.semester) {
+      toast.error('Semester is required');
+      return false;
+    }
+    return true;
   };
 
   const handleStudentLogin = async (e: React.FormEvent) => {
@@ -97,16 +127,20 @@ export const LoginForm: React.FC = () => {
     if (!validateStudentLogin()) return;
 
     setSubmitLoading(true);
-    setErrors({});
+    setShowSignupPrompt(false);
     
     try {
       const { error } = await signIn(studentLoginData.email, studentLoginData.password);
       
       if (error) {
-        setErrors({ submit: error.message });
+        if (error.message === 'User not found') {
+          setAttemptedEmail(studentLoginData.email);
+          setShowSignupPrompt(true);
+        }
+        // Toast error is already shown in signIn function
       }
     } catch (error) {
-      setErrors({ submit: 'An unexpected error occurred' });
+      toast.error('An unexpected error occurred');
     } finally {
       setSubmitLoading(false);
     }
@@ -117,16 +151,15 @@ export const LoginForm: React.FC = () => {
     if (!validateAdminLogin()) return;
 
     setSubmitLoading(true);
-    setErrors({});
     
     try {
       const { error } = await signIn(adminLoginData.email, adminLoginData.password);
       
       if (error) {
-        setErrors({ submit: 'Invalid admin credentials' });
+        // Toast error is already shown in signIn function
       }
     } catch (error) {
-      setErrors({ submit: 'An unexpected error occurred' });
+      toast.error('An unexpected error occurred');
     } finally {
       setSubmitLoading(false);
     }
@@ -137,7 +170,6 @@ export const LoginForm: React.FC = () => {
     if (!validateStudentSignup()) return;
 
     setSubmitLoading(true);
-    setErrors({});
     
     try {
       const profileData = {
@@ -164,23 +196,46 @@ export const LoginForm: React.FC = () => {
         academicData
       );
       
-      if (error) {
-        setErrors({ submit: error.message });
-      } else {
-        // Success message - no email verification needed
-        alert('Registration successful! You can now login with your credentials.');
+      if (!error) {
+        // Switch to login tab and pre-fill email
         setActiveTab('student-login');
-        // Pre-fill login form
         setStudentLoginData({
           email: studentSignupData.email,
           password: ''
         });
+        setShowSignupPrompt(false);
+        
+        // Reset signup form
+        setStudentSignupData({
+          full_name: '',
+          email: '',
+          password: '',
+          confirmPassword: '',
+          phone: '',
+          address: '',
+          roll_number: '',
+          branch: '',
+          section: '',
+          year: 1,
+          semester: 1,
+          sgpa: 0,
+          cgpa: 0
+        });
       }
     } catch (error) {
-      setErrors({ submit: 'An unexpected error occurred' });
+      toast.error('An unexpected error occurred');
     } finally {
       setSubmitLoading(false);
     }
+  };
+
+  const handleSignupPromptAction = () => {
+    setActiveTab('student-signup');
+    setStudentSignupData(prev => ({
+      ...prev,
+      email: attemptedEmail
+    }));
+    setShowSignupPrompt(false);
   };
 
   // Show loading while auth is initializing
@@ -205,6 +260,29 @@ export const LoginForm: React.FC = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {showSignupPrompt && (
+            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+              <h3 className="text-lg font-medium text-yellow-800 mb-2">Account Not Found</h3>
+              <p className="text-yellow-700 mb-3">
+                No account exists for <strong>{attemptedEmail}</strong>. Would you like to create a new account?
+              </p>
+              <div className="flex space-x-3">
+                <Button 
+                  onClick={handleSignupPromptAction}
+                  className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                >
+                  Create Account
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowSignupPrompt(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="student-login">Student Login</TabsTrigger>
@@ -224,7 +302,6 @@ export const LoginForm: React.FC = () => {
                     placeholder="Enter your email"
                     disabled={submitLoading}
                   />
-                  {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email}</p>}
                 </div>
                 
                 <div>
@@ -237,10 +314,7 @@ export const LoginForm: React.FC = () => {
                     placeholder="Enter your password"
                     disabled={submitLoading}
                   />
-                  {errors.password && <p className="text-sm text-red-600 mt-1">{errors.password}</p>}
                 </div>
-                
-                {errors.submit && <p className="text-sm text-red-600">{errors.submit}</p>}
                 
                 <Button type="submit" className="w-full" disabled={submitLoading}>
                   {submitLoading ? 'Signing In...' : 'Sign In as Student'}
@@ -260,7 +334,6 @@ export const LoginForm: React.FC = () => {
                       placeholder="Enter your full name"
                       disabled={submitLoading}
                     />
-                    {errors.full_name && <p className="text-sm text-red-600 mt-1">{errors.full_name}</p>}
                   </div>
                   
                   <div>
@@ -273,7 +346,6 @@ export const LoginForm: React.FC = () => {
                       placeholder="Enter your email"
                       disabled={submitLoading}
                     />
-                    {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email}</p>}
                   </div>
                   
                   <div>
@@ -286,7 +358,6 @@ export const LoginForm: React.FC = () => {
                       placeholder="Enter your password"
                       disabled={submitLoading}
                     />
-                    {errors.password && <p className="text-sm text-red-600 mt-1">{errors.password}</p>}
                   </div>
                   
                   <div>
@@ -299,7 +370,6 @@ export const LoginForm: React.FC = () => {
                       placeholder="Confirm your password"
                       disabled={submitLoading}
                     />
-                    {errors.confirmPassword && <p className="text-sm text-red-600 mt-1">{errors.confirmPassword}</p>}
                   </div>
                   
                   <div>
@@ -322,7 +392,6 @@ export const LoginForm: React.FC = () => {
                       placeholder="Enter your roll number"
                       disabled={submitLoading}
                     />
-                    {errors.roll_number && <p className="text-sm text-red-600 mt-1">{errors.roll_number}</p>}
                   </div>
                   
                   <div>
@@ -343,7 +412,6 @@ export const LoginForm: React.FC = () => {
                         <SelectItem value="Electrical">Electrical</SelectItem>
                       </SelectContent>
                     </Select>
-                    {errors.branch && <p className="text-sm text-red-600 mt-1">{errors.branch}</p>}
                   </div>
                   
                   <div>
@@ -362,7 +430,6 @@ export const LoginForm: React.FC = () => {
                         <SelectItem value="C">Section C</SelectItem>
                       </SelectContent>
                     </Select>
-                    {errors.section && <p className="text-sm text-red-600 mt-1">{errors.section}</p>}
                   </div>
                   
                   <div>
@@ -382,7 +449,6 @@ export const LoginForm: React.FC = () => {
                         <SelectItem value="4">Year 4</SelectItem>
                       </SelectContent>
                     </Select>
-                    {errors.year && <p className="text-sm text-red-600 mt-1">{errors.year}</p>}
                   </div>
                   
                   <div>
@@ -406,7 +472,6 @@ export const LoginForm: React.FC = () => {
                         <SelectItem value="8">Semester 8</SelectItem>
                       </SelectContent>
                     </Select>
-                    {errors.semester && <p className="text-sm text-red-600 mt-1">{errors.semester}</p>}
                   </div>
                 </div>
                 
@@ -420,8 +485,6 @@ export const LoginForm: React.FC = () => {
                     disabled={submitLoading}
                   />
                 </div>
-                
-                {errors.submit && <p className="text-sm text-red-600">{errors.submit}</p>}
                 
                 <Button type="submit" className="w-full" disabled={submitLoading}>
                   {submitLoading ? 'Creating Account...' : 'Create Student Account'}
@@ -441,7 +504,6 @@ export const LoginForm: React.FC = () => {
                     placeholder="Enter admin email"
                     disabled={submitLoading}
                   />
-                  {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email}</p>}
                 </div>
                 
                 <div>
@@ -454,10 +516,7 @@ export const LoginForm: React.FC = () => {
                     placeholder="Enter admin password"
                     disabled={submitLoading}
                   />
-                  {errors.password && <p className="text-sm text-red-600 mt-1">{errors.password}</p>}
                 </div>
-                
-                {errors.submit && <p className="text-sm text-red-600">{errors.submit}</p>}
                 
                 <Button type="submit" className="w-full" disabled={submitLoading}>
                   {submitLoading ? 'Signing In...' : 'Sign In as Admin'}
