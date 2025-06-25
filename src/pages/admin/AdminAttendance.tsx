@@ -15,30 +15,41 @@ interface Student {
   };
 }
 
-interface AttendanceRecord {
-  student_id: string;
-  is_present: boolean;
+interface TimetableEntry {
+  id: string;
+  subject: string;
+  time_slot: string;
+  branch: string;
+  year: number;
+  semester: number;
+  section: string;
 }
 
 export const AdminAttendance: React.FC = () => {
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedBranch, setSelectedBranch] = useState('Computer Science');
   const [selectedYear, setSelectedYear] = useState('3');
   const [selectedSection, setSelectedSection] = useState('A');
-  const [selectedSubject, setSelectedSubject] = useState('Mathematics');
+  const [selectedSubject, setSelectedSubject] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
-  const [subjects, setSubjects] = useState<string[]>([]);
+  const [todaysClasses, setTodaysClasses] = useState<TimetableEntry[]>([]);
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
+  const today = new Date();
+  const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'long' });
+  const currentTime = today.getHours() * 100 + today.getMinutes(); // Convert to HHMM format
+
   useEffect(() => {
     fetchStudents();
-    fetchSubjects();
+    fetchTodaysClasses();
   }, [selectedBranch, selectedYear, selectedSection]);
 
   useEffect(() => {
-    fetchAttendance();
+    if (selectedSubject) {
+      fetchAttendance();
+    }
   }, [selectedDate, selectedBranch, selectedYear, selectedSection, selectedSubject]);
 
   const fetchStudents = async () => {
@@ -75,31 +86,30 @@ export const AdminAttendance: React.FC = () => {
     }
   };
 
-  const fetchSubjects = async () => {
+  const fetchTodaysClasses = async () => {
     try {
       const { data, error } = await supabase
-        .rpc('get_subjects_for_class', {
-          p_branch: selectedBranch,
-          p_year: parseInt(selectedYear)
-        });
+        .from('timetables')
+        .select('*')
+        .eq('day_of_week', dayOfWeek)
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear))
+        .eq('section', selectedSection)
+        .order('time_slot');
 
       if (error) {
-        console.error('Error fetching subjects:', error);
-        // Fallback to default subjects if RPC fails
-        setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
+        console.error('Error fetching today\'s classes:', error);
         return;
       }
 
-      const subjectNames = data?.map((s: any) => s.name) || ['Mathematics', 'Physics', 'Chemistry'];
-      setSubjects(subjectNames);
+      setTodaysClasses(data || []);
       
-      if (subjectNames.length > 0 && !subjectNames.includes(selectedSubject)) {
-        setSelectedSubject(subjectNames[0]);
+      // Auto-select the first available class if none selected
+      if (data && data.length > 0 && !selectedSubject) {
+        setSelectedSubject(data[0].subject);
       }
     } catch (error) {
-      console.error('Error in fetchSubjects:', error);
-      // Fallback to default subjects
-      setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
+      console.error('Error in fetchTodaysClasses:', error);
     }
   };
 
@@ -141,6 +151,20 @@ export const AdminAttendance: React.FC = () => {
       });
       setAttendance(attendanceMap);
     }
+  };
+
+  const isClassActive = (timeSlot: string) => {
+    // Parse time slot like "9:00-10:00"
+    const [startTime] = timeSlot.split('-');
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const classTime = hours * 100 + minutes;
+    
+    // Allow attendance marking 15 minutes before and after class time
+    const buffer = 15;
+    const startBuffer = classTime - buffer;
+    const endBuffer = classTime + 100 + buffer; // +100 for 1 hour class duration
+    
+    return currentTime >= startBuffer && currentTime <= endBuffer;
   };
 
   const markAttendance = (studentId: string, isPresent: boolean) => {
@@ -217,30 +241,23 @@ export const AdminAttendance: React.FC = () => {
     percentage: students.length > 0 ? Math.round((Object.values(attendance).filter(Boolean).length / students.length) * 100) : 0
   };
 
+  const selectedClass = todaysClasses.find(c => c.subject === selectedSubject);
+  const isCurrentClassActive = selectedClass ? isClassActive(selectedClass.time_slot) : false;
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Attendance Management</h1>
-        <p className="text-gray-600">Mark and manage student attendance for classes</p>
+        <p className="text-gray-600">Mark attendance for today's classes ({dayOfWeek})</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Select Class Details</CardTitle>
-          <CardDescription>Choose the class and date for attendance marking</CardDescription>
+          <CardTitle>Today's Classes</CardTitle>
+          <CardDescription>Select a class to mark attendance</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Select value={selectedBranch} onValueChange={setSelectedBranch}>
               <SelectTrigger>
                 <SelectValue placeholder="Branch" />
@@ -273,134 +290,163 @@ export const AdminAttendance: React.FC = () => {
                 <SelectItem value="A">Section A</SelectItem>
                 <SelectItem value="B">Section B</SelectItem>
                 <SelectItem value="C">Section C</SelectItem>
+                <SelectItem value="D">Section D</SelectItem>
               </SelectContent>
             </Select>
 
             <Select value={selectedSubject} onValueChange={setSelectedSubject}>
               <SelectTrigger>
-                <SelectValue placeholder="Subject" />
+                <SelectValue placeholder="Select Class" />
               </SelectTrigger>
               <SelectContent>
-                {subjects.map(subject => (
-                  <SelectItem key={subject} value={subject}>{subject}</SelectItem>
+                {todaysClasses.map(cls => (
+                  <SelectItem key={cls.id} value={cls.subject}>
+                    {cls.subject} ({cls.time_slot})
+                    {isClassActive(cls.time_slot) && (
+                      <span className="ml-2 text-green-600 font-semibold">• ACTIVE</span>
+                    )}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+
+          {todaysClasses.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <p>No classes scheduled for today</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-            <Users className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{attendanceStats.total}</div>
-            <p className="text-xs text-muted-foreground">In this class</p>
-          </CardContent>
-        </Card>
+      {selectedSubject && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Students</CardTitle>
+                <Users className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{attendanceStats.total}</div>
+                <p className="text-xs text-muted-foreground">In this class</p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Present</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{attendanceStats.present}</div>
-            <p className="text-xs text-muted-foreground">Students present</p>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Present</CardTitle>
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{attendanceStats.present}</div>
+                <p className="text-xs text-muted-foreground">Students present</p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Absent</CardTitle>
-            <XCircle className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{attendanceStats.absent}</div>
-            <p className="text-xs text-muted-foreground">Students absent</p>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Absent</CardTitle>
+                <XCircle className="h-4 w-4 text-red-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-red-600">{attendanceStats.absent}</div>
+                <p className="text-xs text-muted-foreground">Students absent</p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Percentage</CardTitle>
-            <Clock className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">{attendanceStats.percentage}%</div>
-            <p className="text-xs text-muted-foreground">Attendance rate</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>Mark Attendance</CardTitle>
-              <CardDescription>
-                {selectedSubject} - {selectedBranch} Year {selectedYear} Section {selectedSection}
-              </CardDescription>
-            </div>
-            <div className="flex space-x-2">
-              <Button variant="outline" onClick={markAllPresent}>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Mark All Present
-              </Button>
-              <Button variant="outline" onClick={markAllAbsent}>
-                <XCircle className="h-4 w-4 mr-2" />
-                Mark All Absent
-              </Button>
-              <Button onClick={saveAttendance} disabled={loading}>
-                {loading ? "Saving..." : "Save Attendance"}
-              </Button>
-            </div>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Percentage</CardTitle>
+                <Clock className="h-4 w-4 text-purple-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-purple-600">{attendanceStats.percentage}%</div>
+                <p className="text-xs text-muted-foreground">Attendance rate</p>
+              </CardContent>
+            </Card>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {students.map((student) => (
-              <div key={student.id} className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center space-x-4">
-                  <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                    <span className="text-sm font-medium text-gray-600">
-                      {student.profiles?.full_name?.split(' ').map(n => n[0]).join('') || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">{student.profiles?.full_name}</h4>
-                    <p className="text-sm text-gray-600">{student.roll_number}</p>
-                  </div>
+
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    Mark Attendance
+                    {isCurrentClassActive && (
+                      <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                        ACTIVE CLASS
+                      </span>
+                    )}
+                  </CardTitle>
+                  <CardDescription>
+                    {selectedSubject} - {selectedBranch} Year {selectedYear} Section {selectedSection}
+                    {selectedClass && (
+                      <span className="block text-sm text-gray-500 mt-1">
+                        Time: {selectedClass.time_slot}
+                      </span>
+                    )}
+                  </CardDescription>
                 </div>
-                
                 <div className="flex space-x-2">
-                  <Button
-                    size="sm"
-                    variant={attendance[student.id] ? "default" : "outline"}
-                    onClick={() => markAttendance(student.id, true)}
-                    className={attendance[student.id] ? "bg-green-600 hover:bg-green-700" : ""}
-                  >
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    Present
+                  <Button variant="outline" onClick={markAllPresent}>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Mark All Present
                   </Button>
-                  <Button
-                    size="sm"
-                    variant={!attendance[student.id] ? "default" : "outline"}
-                    onClick={() => markAttendance(student.id, false)}
-                    className={!attendance[student.id] ? "bg-red-600 hover:bg-red-700" : ""}
-                  >
-                    <XCircle className="h-4 w-4 mr-1" />
-                    Absent
+                  <Button variant="outline" onClick={markAllAbsent}>
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Mark All Absent
+                  </Button>
+                  <Button onClick={saveAttendance} disabled={loading}>
+                    {loading ? "Saving..." : "Save Attendance"}
                   </Button>
                 </div>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {students.map((student) => (
+                  <div key={student.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                        <span className="text-sm font-medium text-gray-600">
+                          {student.profiles?.full_name?.split(' ').map(n => n[0]).join('') || 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-900">{student.profiles?.full_name}</h4>
+                        <p className="text-sm text-gray-600">{student.roll_number}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex space-x-2">
+                      <Button
+                        size="sm"
+                        variant={attendance[student.id] ? "default" : "outline"}
+                        onClick={() => markAttendance(student.id, true)}
+                        className={attendance[student.id] ? "bg-green-600 hover:bg-green-700" : ""}
+                      >
+                        <CheckCircle className="h-4 w-4 mr-1" />
+                        Present
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={!attendance[student.id] ? "default" : "outline"}
+                        onClick={() => markAttendance(student.id, false)}
+                        className={!attendance[student.id] ? "bg-red-600 hover:bg-red-700" : ""}
+                      >
+                        <XCircle className="h-4 w-4 mr-1" />
+                        Absent
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 };

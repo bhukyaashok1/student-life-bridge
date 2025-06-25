@@ -1,34 +1,103 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Users, Calendar, GraduationCap, Bell, FileText, MessageSquare } from 'lucide-react';
+import { supabase } from '../../integrations/supabase/client';
+
+interface DashboardStats {
+  totalStudents: number;
+  averageAttendance: number;
+  averageCGPA: number;
+  pendingFeedback: number;
+}
 
 export const AdminDashboard: React.FC = () => {
-  const stats = [
+  const [stats, setStats] = useState<DashboardStats>({
+    totalStudents: 0,
+    averageAttendance: 0,
+    averageCGPA: 0,
+    pendingFeedback: 0
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardStats();
+  }, []);
+
+  const fetchDashboardStats = async () => {
+    try {
+      // Fetch total students
+      const { data: studentsData, error: studentsError } = await supabase
+        .from('students')
+        .select('id, cgpa');
+
+      if (studentsError) {
+        console.error('Error fetching students:', studentsError);
+      }
+
+      // Fetch attendance data for the current month
+      const currentDate = new Date();
+      const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+
+      const { data: attendanceData, error: attendanceError } = await supabase
+        .from('attendance')
+        .select('is_present')
+        .gte('date', startOfMonth.toISOString().split('T')[0])
+        .lte('date', endOfMonth.toISOString().split('T')[0]);
+
+      if (attendanceError) {
+        console.error('Error fetching attendance:', attendanceError);
+      }
+
+      // Calculate stats
+      const totalStudents = studentsData?.length || 0;
+      const averageCGPA = totalStudents > 0 
+        ? studentsData.reduce((sum, student) => sum + (student.cgpa || 0), 0) / totalStudents 
+        : 0;
+
+      const totalAttendanceRecords = attendanceData?.length || 0;
+      const presentRecords = attendanceData?.filter(record => record.is_present).length || 0;
+      const averageAttendance = totalAttendanceRecords > 0 ? (presentRecords / totalAttendanceRecords) * 100 : 0;
+
+      setStats({
+        totalStudents,
+        averageAttendance: Math.round(averageAttendance),
+        averageCGPA: Math.round(averageCGPA * 10) / 10,
+        pendingFeedback: Math.floor(totalStudents * 0.1) // Placeholder calculation
+      });
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statsCards = [
     {
       title: 'Total Students',
-      value: '1,245',
+      value: loading ? '...' : stats.totalStudents.toString(),
       description: 'Active students',
       icon: Users,
       color: 'text-blue-600',
     },
     {
       title: 'Average Attendance',
-      value: '87%',
+      value: loading ? '...' : `${stats.averageAttendance}%`,
       description: 'This month',
       icon: Calendar,
       color: 'text-green-600',
     },
     {
       title: 'Average CGPA',
-      value: '7.8',
+      value: loading ? '...' : stats.averageCGPA.toString(),
       description: 'All students',
       icon: GraduationCap,
       color: 'text-purple-600',
     },
     {
       title: 'Pending Feedback',
-      value: '23',
+      value: loading ? '...' : stats.pendingFeedback.toString(),
       description: 'Needs attention',
       icon: MessageSquare,
       color: 'text-orange-600',
@@ -43,7 +112,7 @@ export const AdminDashboard: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => (
+        {statsCards.map((stat, index) => (
           <Card key={index}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
@@ -99,10 +168,15 @@ export const AdminDashboard: React.FC = () => {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium">Attendance Rate</span>
-                <span className="text-sm text-green-600 font-semibold">87%</span>
+                <span className="text-sm text-green-600 font-semibold">
+                  {loading ? '...' : `${stats.averageAttendance}%`}
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div className="bg-green-600 h-2 rounded-full" style={{ width: '87%' }}></div>
+                <div 
+                  className="bg-green-600 h-2 rounded-full" 
+                  style={{ width: `${stats.averageAttendance}%` }}
+                ></div>
               </div>
               
               <div className="flex justify-between items-center">

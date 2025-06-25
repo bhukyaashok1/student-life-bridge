@@ -12,8 +12,14 @@ import {
   Download, 
   BookOpen,
   GraduationCap,
-  Settings
+  Settings,
+  X
 } from 'lucide-react';
+import { useIsMobile } from '../../hooks/use-mobile';
+
+interface SidebarProps {
+  onClose?: () => void;
+}
 
 const studentMenuItems = [
   { path: '/student/dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -40,16 +46,27 @@ const adminMenuItems = [
   { path: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
-export const Sidebar: React.FC = () => {
+export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
   const { userType } = useAuth();
+  const isMobile = useIsMobile();
   const menuItems = userType === 'admin' ? adminMenuItems : studentMenuItems;
 
   return (
     <aside className="w-64 bg-white shadow-sm border-r min-h-screen">
       <div className="p-6">
-        <div className="flex items-center space-x-2 mb-8">
-          <BookOpen className="h-8 w-8 text-blue-600" />
-          <span className="text-lg font-bold text-gray-800">SMS</span>
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-2">
+            <BookOpen className="h-8 w-8 text-blue-600" />
+            <span className="text-lg font-bold text-gray-800">SMS</span>
+          </div>
+          {isMobile && onClose && (
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md hover:bg-gray-100"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
         </div>
         
         <nav className="space-y-2">
@@ -57,6 +74,7 @@ export const Sidebar: React.FC = () => {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={isMobile ? onClose : undefined}
               className={({ isActive }) =>
                 `flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
                   isActive

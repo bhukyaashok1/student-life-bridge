@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -19,13 +18,31 @@ interface TimetableEntry {
   section: string;
 }
 
+const defaultSubjects = [
+  'Mathematics',
+  'Physics',
+  'Chemistry',
+  'English',
+  'Computer Science',
+  'Data Structures',
+  'Algorithms',
+  'Database Systems',
+  'Operating Systems',
+  'Software Engineering',
+  'Web Development',
+  'Machine Learning',
+  'Computer Networks',
+  'Digital Electronics',
+  'Microprocessors'
+];
+
 export const AdminTimetable: React.FC = () => {
   const [selectedBranch, setSelectedBranch] = useState('Computer Science');
   const [selectedYear, setSelectedYear] = useState('3');
-  const [selectedSemester, setSelectedSemester] = useState('5');
+  const [selectedSemester, setSelectedSemester] = useState('1');
   const [selectedSection, setSelectedSection] = useState('A');
   const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
-  const [subjects, setSubjects] = useState<string[]>([]);
+  const [subjects, setSubjects] = useState<string[]>(defaultSubjects);
   const [editingEntry, setEditingEntry] = useState<TimetableEntry | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -49,15 +66,17 @@ export const AdminTimetable: React.FC = () => {
 
       if (error) {
         console.error('Error fetching subjects:', error);
-        setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
+        setSubjects(defaultSubjects);
         return;
       }
 
-      const subjectNames = data?.map((s: any) => s.name) || ['Mathematics', 'Physics', 'Chemistry'];
-      setSubjects(subjectNames);
+      const subjectNames = data?.map((s: any) => s.name) || [];
+      // Combine database subjects with default subjects
+      const allSubjects = [...new Set([...subjectNames, ...defaultSubjects])];
+      setSubjects(allSubjects);
     } catch (error) {
       console.error('Error in fetchSubjects:', error);
-      setSubjects(['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science']);
+      setSubjects(defaultSubjects);
     }
   };
 
@@ -317,12 +336,6 @@ export const AdminTimetable: React.FC = () => {
               <SelectContent>
                 <SelectItem value="1">Semester 1</SelectItem>
                 <SelectItem value="2">Semester 2</SelectItem>
-                <SelectItem value="3">Semester 3</SelectItem>
-                <SelectItem value="4">Semester 4</SelectItem>
-                <SelectItem value="5">Semester 5</SelectItem>
-                <SelectItem value="6">Semester 6</SelectItem>
-                <SelectItem value="7">Semester 7</SelectItem>
-                <SelectItem value="8">Semester 8</SelectItem>
               </SelectContent>
             </Select>
 
@@ -334,6 +347,7 @@ export const AdminTimetable: React.FC = () => {
                 <SelectItem value="A">Section A</SelectItem>
                 <SelectItem value="B">Section B</SelectItem>
                 <SelectItem value="C">Section C</SelectItem>
+                <SelectItem value="D">Section D</SelectItem>
               </SelectContent>
             </Select>
           </div>

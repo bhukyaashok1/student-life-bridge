@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { Users, Search, UserPlus, Edit, Eye, GraduationCap, Trash2 } from 'lucide-react';
+import { Users, Search, UserPlus, GraduationCap, Trash2 } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
 import { useToast } from '../../components/ui/use-toast';
 
@@ -18,9 +18,11 @@ interface Student {
   sgpa: number;
   cgpa: number;
   profiles: {
+    id: string;
     full_name: string;
     email: string;
     phone?: string;
+    user_id: string;
   };
 }
 
@@ -43,6 +45,8 @@ export const AdminStudents: React.FC = () => {
         .select(`
           *,
           profiles:profile_id (
+            id,
+            user_id,
             full_name,
             email,
             phone
@@ -68,21 +72,67 @@ export const AdminStudents: React.FC = () => {
     }
   };
 
-  const deleteStudent = async (studentId: string) => {
+  const deleteStudent = async (student: Student) => {
+    if (!confirm(`Are you sure you want to delete ${student.profiles?.full_name}? This action cannot be undone.`)) {
+      return;
+    }
+
     try {
-      const { error } = await supabase
+      setLoading(true);
+
+      // Delete related records first
+      const { error: attendanceError } = await supabase
+        .from('attendance')
+        .delete()
+        .eq('student_id', student.id);
+
+      if (attendanceError) {
+        console.error('Error deleting attendance records:', attendanceError);
+      }
+
+      const { error: marksError } = await supabase
+        .from('marks')
+        .delete()
+        .eq('student_id', student.id);
+
+      if (marksError) {
+        console.error('Error deleting marks records:', marksError);
+      }
+
+      // Delete student record
+      const { error: studentError } = await supabase
         .from('students')
         .delete()
-        .eq('id', studentId);
+        .eq('id', student.id);
 
-      if (error) {
-        console.error('Error deleting student:', error);
+      if (studentError) {
+        console.error('Error deleting student:', studentError);
         toast({
           title: "Error",
           description: "Failed to delete student",
           variant: "destructive",
         });
         return;
+      }
+
+      // Delete profile if it exists
+      if (student.profiles?.id) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .delete()
+          .eq('id', student.profiles.id);
+
+        if (profileError) {
+          console.error('Error deleting profile:', profileError);
+        }
+      }
+
+      // Delete auth user if user_id exists
+      if (student.profiles?.user_id) {
+        const { error: authError } = await supabase.auth.admin.deleteUser(student.profiles.user_id);
+        if (authError) {
+          console.error('Error deleting auth user:', authError);
+        }
       }
 
       toast({
@@ -93,34 +143,13 @@ export const AdminStudents: React.FC = () => {
       fetchStudents();
     } catch (error) {
       console.error('Error in deleteStudent:', error);
-    }
-  };
-
-  const updateStudent = async (studentId: string, updates: any) => {
-    try {
-      const { error } = await supabase
-        .from('students')
-        .update(updates)
-        .eq('id', studentId);
-
-      if (error) {
-        console.error('Error updating student:', error);
-        toast({
-          title: "Error",
-          description: "Failed to update student",
-          variant: "destructive",
-        });
-        return;
-      }
-
       toast({
-        title: "Success",
-        description: "Student updated successfully",
+        title: "Error",
+        description: "Failed to delete student",
+        variant: "destructive",
       });
-      
-      fetchStudents();
-    } catch (error) {
-      console.error('Error in updateStudent:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -136,12 +165,6 @@ export const AdminStudents: React.FC = () => {
     
     return matchesSearch && matchesBranch && matchesYear;
   });
-
-  const getAttendanceColor = (attendance: number) => {
-    if (attendance >= 90) return 'text-green-600';
-    if (attendance >= 75) return 'text-yellow-600';
-    return 'text-red-600';
-  };
 
   const getCGPAColor = (cgpa: number) => {
     if (cgpa >= 8.5) return 'text-green-600';
@@ -309,21 +332,14 @@ export const AdminStudents: React.FC = () => {
                       {student.cgpa}
                     </td>
                     <td className="text-center p-3">
-                      <div className="flex justify-center space-x-2">
-                        <Button size="sm" variant="outline">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="outline">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => deleteStudent(student.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => deleteStudent(student)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </td>
                   </tr>
                 ))}
