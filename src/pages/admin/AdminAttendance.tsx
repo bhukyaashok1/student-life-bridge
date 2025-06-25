@@ -39,7 +39,7 @@ export const AdminAttendance: React.FC = () => {
 
   const today = new Date();
   const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'long' });
-  const currentTime = today.getHours() * 100 + today.getMinutes(); // Convert to HHMM format
+  const currentTime = today.getHours() * 100 + today.getMinutes();
 
   useEffect(() => {
     fetchStudents();
@@ -75,7 +75,6 @@ export const AdminAttendance: React.FC = () => {
 
       setStudents(data || []);
       
-      // Initialize attendance for new students
       const initialAttendance: Record<string, boolean> = {};
       data?.forEach(student => {
         initialAttendance[student.id] = false;
@@ -104,7 +103,6 @@ export const AdminAttendance: React.FC = () => {
 
       setTodaysClasses(data || []);
       
-      // Auto-select the first available class if none selected
       if (data && data.length > 0 && !selectedSubject) {
         setSelectedSubject(data[0].subject);
       }
@@ -116,17 +114,16 @@ export const AdminAttendance: React.FC = () => {
   const fetchAttendance = async () => {
     try {
       const { data, error } = await supabase
-        .rpc('get_attendance_records', {
-          p_date: selectedDate,
-          p_subject: selectedSubject,
-          p_branch: selectedBranch,
-          p_year: parseInt(selectedYear),
-          p_section: selectedSection
-        });
+        .from('attendance')
+        .select('student_id, is_present')
+        .eq('date', selectedDate)
+        .eq('subject', selectedSubject)
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear))
+        .eq('section', selectedSection);
 
       if (error) {
         console.error('Error fetching attendance:', error);
-        // Initialize empty attendance if fetch fails
         const attendanceMap: Record<string, boolean> = {};
         students.forEach(student => {
           attendanceMap[student.id] = false;
@@ -144,7 +141,6 @@ export const AdminAttendance: React.FC = () => {
       setAttendance(attendanceMap);
     } catch (error) {
       console.error('Error in fetchAttendance:', error);
-      // Initialize empty attendance if fetch fails
       const attendanceMap: Record<string, boolean> = {};
       students.forEach(student => {
         attendanceMap[student.id] = false;
@@ -154,15 +150,13 @@ export const AdminAttendance: React.FC = () => {
   };
 
   const isClassActive = (timeSlot: string) => {
-    // Parse time slot like "9:00-10:00"
     const [startTime] = timeSlot.split('-');
     const [hours, minutes] = startTime.split(':').map(Number);
     const classTime = hours * 100 + minutes;
     
-    // Allow attendance marking 15 minutes before and after class time
     const buffer = 15;
     const startBuffer = classTime - buffer;
-    const endBuffer = classTime + 100 + buffer; // +100 for 1 hour class duration
+    const endBuffer = classTime + 100 + buffer;
     
     return currentTime >= startBuffer && currentTime <= endBuffer;
   };
@@ -193,20 +187,32 @@ export const AdminAttendance: React.FC = () => {
   const saveAttendance = async () => {
     setLoading(true);
     try {
+      // Use individual insert/upsert instead of RPC function
       const attendanceRecords = students.map(student => ({
         student_id: student.id,
         date: selectedDate,
         subject: selectedSubject,
         branch: selectedBranch,
         year: parseInt(selectedYear),
+        semester: 1, // Default semester
         section: selectedSection,
         is_present: attendance[student.id] || false
       }));
 
+      // Delete existing records first
+      await supabase
+        .from('attendance')
+        .delete()
+        .eq('date', selectedDate)
+        .eq('subject', selectedSubject)
+        .eq('branch', selectedBranch)
+        .eq('year', parseInt(selectedYear))
+        .eq('section', selectedSection);
+
+      // Insert new records
       const { error } = await supabase
-        .rpc('save_attendance_records', {
-          p_records: attendanceRecords
-        });
+        .from('attendance')
+        .insert(attendanceRecords);
 
       if (error) {
         console.error('Error saving attendance:', error);
