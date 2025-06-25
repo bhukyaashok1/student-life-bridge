@@ -232,15 +232,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: { message: 'User already exists' } };
       }
 
-      // Sign up the user without email confirmation
+      // Sign up the user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
-          data: {
-            email_confirm: false
-          }
         }
       });
 
