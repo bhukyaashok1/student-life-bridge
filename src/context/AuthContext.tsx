@@ -63,30 +63,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const ADMIN_EMAIL = 'bhukyaashoknayak87@gmail.com';
   const ADMIN_PASSWORD = 'Ashoknayak7@';
 
-  const fetchUserData = async (userId: string, userEmail: string) => {
+  const fetchUserDataByEmail = async (email: string) => {
     try {
-      console.log('Fetching user data for:', userId);
+      console.log('Fetching user data by email:', email);
       
-      // Fetch profile
+      // First fetch profile by email
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', userId)
+        .eq('email', email)
         .maybeSingle();
 
       if (profileError) {
-        console.error('Error fetching profile:', profileError);
+        console.error('Error fetching profile by email:', profileError);
         toast.error('Error loading profile data');
         return;
       }
 
       if (!profileData) {
-        console.error('No profile found for user:', userId);
+        console.log('No profile found for email:', email);
         toast.error('Profile not found. Please contact support.');
         return;
       }
 
-      console.log('Profile data:', profileData);
+      console.log('Profile data found:', profileData);
       setProfile(profileData as StudentProfile);
       setUserType(profileData.user_type as 'student' | 'admin');
 
@@ -113,11 +113,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
-        console.log('Student data:', studentInfo);
+        console.log('Student data found:', studentInfo);
         setStudentData(studentInfo);
       }
     } catch (error) {
-      console.error('Error in fetchUserData:', error);
+      console.error('Error in fetchUserDataByEmail:', error);
       toast.error('Unexpected error occurred while loading user data');
     }
   };
@@ -170,10 +170,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         console.log('Current session:', currentSession);
         
-        if (currentSession) {
+        if (currentSession && currentSession.user) {
           setSession(currentSession);
           setUser(currentSession.user);
-          await fetchUserData(currentSession.user.id, currentSession.user.email || '');
+          // Use email from session to fetch user data
+          await fetchUserDataByEmail(currentSession.user.email || '');
         }
         
         setLoading(false);
@@ -206,7 +207,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(session?.user ?? null);
         
         if (session?.user && event !== 'SIGNED_OUT') {
-          await fetchUserData(session.user.id, session.user.email || '');
+          // Use email from session to fetch user data
+          await fetchUserDataByEmail(session.user.email || '');
         } else {
           setProfile(null);
           setStudentData(null);
