@@ -1,8 +1,8 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import { toast } from 'react-toastify';
+import { useNavigate } from 'react-router-dom';
 
 interface StudentProfile {
   id: string;
@@ -115,6 +115,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         console.log('Student data found:', studentInfo);
         setStudentData(studentInfo);
+      }
+
+      // Redirect based on user type
+      const currentPath = window.location.pathname;
+      if (currentPath === '/auth' || currentPath === '/') {
+        if (profileData.user_type === 'admin') {
+          window.location.href = '/admin/dashboard';
+        } else {
+          window.location.href = '/student/dashboard';
+        }
       }
     } catch (error) {
       console.error('Error in fetchUserDataByEmail:', error);
@@ -350,6 +360,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         console.log('Admin login successful');
         toast.success('Welcome, Admin!');
+        
+        // Redirect to admin dashboard
+        setTimeout(() => {
+          window.location.href = '/admin/dashboard';
+        }, 1000);
+        
         return { error: null };
       }
 

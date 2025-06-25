@@ -45,7 +45,6 @@ function App() {
         <Router>
           <div className="App">
             <Routes>
-              <Route path="/" element={<Index />} />
               <Route path="/auth" element={<LoginForm />} />
               
               {/* Student routes */}
@@ -89,6 +88,8 @@ function App() {
                 </ProtectedRoute>
               } />
               
+              {/* Default route - redirect to auth */}
+              <Route path="/" element={<Navigate to="/auth" replace />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
             
