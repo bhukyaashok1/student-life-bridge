@@ -9,9 +9,9 @@ import { LoginForm } from './components/Auth/LoginForm';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-// Pages
-import { Index } from './pages/Index';
-import { NotFound } from './pages/NotFound';
+// Pages - using default imports
+import Index from './pages/Index';
+import NotFound from './pages/NotFound';
 
 // Student pages
 import { StudentDashboard } from './pages/student/StudentDashboard';
@@ -50,13 +50,13 @@ function App() {
               
               {/* Student routes */}
               <Route path="/student/*" element={
-                <ProtectedRoute requiredRole="student">
+                <ProtectedRoute>
                   <Layout>
                     <Routes>
                       <Route path="dashboard" element={<StudentDashboard />} />
                       <Route path="profile" element={<StudentProfile />} />
                       <Route path="attendance" element={<StudentAttendance />} />
-                      <Route path="marks" entity={<StudentMarks />} />
+                      <Route path="marks" element={<StudentMarks />} />
                       <Route path="timetable" element={<StudentTimetable />} />
                       <Route path="feedback" element={<StudentFeedback />} />
                       <Route path="downloads" element={<StudentDownloads />} />
@@ -70,7 +70,7 @@ function App() {
               
               {/* Admin routes */}
               <Route path="/admin/*" element={
-                <ProtectedRoute requiredRole="admin">
+                <ProtectedRoute>
                   <Layout>
                     <Routes>
                       <Route path="dashboard" element={<AdminDashboard />} />
