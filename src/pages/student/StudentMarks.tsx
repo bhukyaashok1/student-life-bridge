@@ -1,57 +1,66 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { GraduationCap, TrendingUp, Award } from 'lucide-react';
+import { Badge } from '../../components/ui/badge';
+import { Progress } from '../../components/ui/progress';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '../../components/ui/chart';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { TrendingUp, Target, BookOpen, Award } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../integrations/supabase/client';
+import { AcademicChatbot } from '../../components/student/AcademicChatbot';
 
-interface StudentMark {
+interface MarkRecord {
   id: string;
   subject: string;
   mid1: number;
   mid2: number;
   assignment: number;
   total: number;
+}
+
+interface CGPAData {
   semester: number;
+  sgpa: number;
+  cgpa: number;
 }
 
 export const StudentMarks: React.FC = () => {
   const { studentData, loading: authLoading } = useAuth();
-  const [selectedSemester, setSelectedSemester] = useState('');
-  const [marks, setMarks] = useState<StudentMark[]>([]);
+  const [marks, setMarks] = useState<MarkRecord[]>([]);
+  const [cgpaData, setCgpaData] = useState<CGPAData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (studentData && !authLoading) {
-      setSelectedSemester(studentData.semester.toString());
       fetchMarks();
+      fetchCGPAData();
     }
   }, [studentData, authLoading]);
-
-  useEffect(() => {
-    if (studentData && selectedSemester && !authLoading) {
-      fetchMarks();
-    }
-  }, [selectedSemester, studentData, authLoading]);
 
   const fetchMarks = async () => {
     if (!studentData) return;
 
     try {
       setLoading(true);
-      setError(null);
-      
-      console.log('Fetching marks for student:', studentData.id);
-      
-      // Fetch marks for the student
+      const { data: studentRecord, error: studentError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('profile_id', studentData.id)
+        .single();
+
+      if (studentError || !studentRecord) {
+        console.error('Error fetching student record:', studentError);
+        setError('Failed to fetch student data');
+        return;
+      }
+
       const { data: marksData, error: marksError } = await supabase
         .from('marks')
         .select('*')
-        .eq('student_id', studentData.id)
-        .eq('semester', selectedSemester ? parseInt(selectedSemester) : studentData.semester)
-        .order('subject');
+        .eq('student_id', studentRecord.id)
+        .eq('semester', studentData.semester);
 
       if (marksError) {
         console.error('Error fetching marks:', marksError);
@@ -59,7 +68,6 @@ export const StudentMarks: React.FC = () => {
         return;
       }
 
-      console.log('Fetched marks data:', marksData);
       setMarks(marksData || []);
     } catch (error) {
       console.error('Error in fetchMarks:', error);
@@ -69,11 +77,83 @@ export const StudentMarks: React.FC = () => {
     }
   };
 
+  const fetchCGPAData = async () => {
+    if (!studentData) return;
+
+    try {
+      const { data: studentRecord, error: studentError } = await supabase
+        .from('students')
+        .select('sgpa, cgpa')
+        .eq('profile_id', studentData.id)
+        .single();
+
+      if (studentError || !studentRecord) {
+        console.error('Error fetching CGPA data:', studentError);
+        return;
+      }
+
+      // Generate sample CGPA progression data (in real app, this should come from database)
+      const sampleCGPAData = [];
+      for (let sem = 1; sem <= studentData.semester; sem++) {
+        sampleCGPAData.push({
+          semester: sem,
+          sgpa: sem === studentData.semester ? parseFloat(studentRecord.sgpa || '0') : Math.random() * 2 + 7,
+          cgpa: sem === studentData.semester ? parseFloat(studentRecord.cgpa || '0') : Math.random() * 1.5 + 7.5
+        });
+      }
+      
+      setCgpaData(sampleCGPAData);
+    } catch (error) {
+      console.error('Error fetching CGPA data:', error);
+    }
+  };
+
+  const getGradeFromMarks = (total: number): string => {
+    if (total >= 90) return 'A+';
+    if (total >= 80) return 'A';
+    if (total >= 70) return 'B+';
+    if (total >= 60) return 'B';
+    if (total >= 50) return 'C';
+    if (total >= 40) return 'D';
+    return 'F';
+  };
+
+  const getGradeColor = (grade: string): string => {
+    const colors: Record<string, string> = {
+      'A+': 'bg-green-100 text-green-800',
+      'A': 'bg-green-100 text-green-700',
+      'B+': 'bg-blue-100 text-blue-800',
+      'B': 'bg-blue-100 text-blue-700',
+      'C': 'bg-yellow-100 text-yellow-800',
+      'D': 'bg-orange-100 text-orange-800',
+      'F': 'bg-red-100 text-red-800'
+    };
+    return colors[grade] || 'bg-gray-100 text-gray-800';
+  };
+
+  const averageMarks = marks.length > 0 
+    ? marks.reduce((sum, mark) => sum + mark.total, 0) / marks.length 
+    : 0;
+
+  const currentSGPA = cgpaData.length > 0 ? cgpaData[cgpaData.length - 1]?.sgpa || 0 : 0;
+  const currentCGPA = cgpaData.length > 0 ? cgpaData[cgpaData.length - 1]?.cgpa || 0 : 0;
+
+  const chartConfig = {
+    sgpa: {
+      label: "SGPA",
+      color: "hsl(var(--chart-1))",
+    },
+    cgpa: {
+      label: "CGPA",
+      color: "hsl(var(--chart-2))",
+    },
+  };
+
   if (authLoading || loading) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Marks & Grades</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Marks & Performance</h1>
           <p className="text-gray-600">Loading your academic performance...</p>
         </div>
       </div>
@@ -84,14 +164,8 @@ export const StudentMarks: React.FC = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Marks & Grades</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Marks & Performance</h1>
           <p className="text-red-600">{error}</p>
-          <button 
-            onClick={fetchMarks}
-            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Retry
-          </button>
         </div>
       </div>
     );
@@ -101,182 +175,238 @@ export const StudentMarks: React.FC = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Marks & Grades</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Marks & Performance</h1>
           <p className="text-gray-600">Unable to load student data. Please try refreshing the page.</p>
         </div>
       </div>
     );
   }
 
-  const getGradeColor = (marks: number) => {
-    if (marks >= 90) return 'text-green-600';
-    if (marks >= 80) return 'text-blue-600';
-    if (marks >= 70) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const getGradeLetter = (marks: number) => {
-    if (marks >= 90) return 'A+';
-    if (marks >= 80) return 'A';
-    if (marks >= 70) return 'B';
-    if (marks >= 60) return 'C';
-    return 'F';
-  };
-
-  const currentSemesterMarks = marks.filter(mark => mark.semester === parseInt(selectedSemester));
-  const currentSGPA = currentSemesterMarks.length > 0 
-    ? Math.round((currentSemesterMarks.reduce((sum, mark) => sum + mark.total, 0) / currentSemesterMarks.length) * 100) / 100
-    : studentData.sgpa;
-
-  const semesters = Array.from({ length: 8 }, (_, i) => (i + 1).toString());
-
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Marks & Grades</h1>
-          <p className="text-gray-600">View your academic performance and grades</p>
-        </div>
-        <Select value={selectedSemester} onValueChange={setSelectedSemester}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Select Semester" />
-          </SelectTrigger>
-          <SelectContent>
-            {semesters.map(sem => (
-              <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Marks & Performance</h1>
+        <p className="text-gray-600">
+          {studentData.branch} - Year {studentData.year}, Semester {studentData.semester}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Performance Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Current SGPA</CardTitle>
-            <GraduationCap className="h-4 w-4 text-blue-600" />
+            <TrendingUp className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{currentSGPA}</div>
-            <p className="text-xs text-muted-foreground">Semester {selectedSemester}</p>
+            <div className="text-2xl font-bold">{currentSGPA.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground">This semester</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Overall CGPA</CardTitle>
+            <CardTitle className="text-sm font-medium">Current CGPA</CardTitle>
             <Award className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{studentData.cgpa}</div>
-            <p className="text-xs text-muted-foreground">Cumulative</p>
+            <div className="text-2xl font-bold">{currentCGPA.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground">Overall performance</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Average Marks</CardTitle>
+            <Target className="h-4 w-4 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{averageMarks.toFixed(1)}%</div>
+            <p className="text-xs text-muted-foreground">Current semester</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Subjects</CardTitle>
-            <TrendingUp className="h-4 w-4 text-purple-600" />
+            <BookOpen className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-600">{currentSemesterMarks.length}</div>
+            <div className="text-2xl font-bold">{marks.length}</div>
             <p className="text-xs text-muted-foreground">This semester</p>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Subject-wise Marks - Semester {selectedSemester}</CardTitle>
-          <CardDescription>Detailed breakdown of your marks for each subject</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {currentSemesterMarks.length > 0 ? (
+      {/* CGPA/SGPA Analysis Charts */}
+      {cgpaData.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>SGPA & CGPA Progression</CardTitle>
+              <CardDescription>Track your academic performance over semesters</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={chartConfig}>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={cgpaData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="semester" />
+                    <YAxis domain={[0, 10]} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Line 
+                      type="monotone" 
+                      dataKey="sgpa" 
+                      stroke="var(--color-sgpa)" 
+                      strokeWidth={2}
+                      dot={{ fill: "var(--color-sgpa)" }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="cgpa" 
+                      stroke="var(--color-cgpa)" 
+                      strokeWidth={2}
+                      dot={{ fill: "var(--color-cgpa)" }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Subject-wise Performance</CardTitle>
+              <CardDescription>Current semester marks breakdown</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={chartConfig}>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={marks}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="subject" 
+                      tick={{ fontSize: 12 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={100}
+                    />
+                    <YAxis domain={[0, 100]} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="total" fill="var(--color-sgpa)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Subject-wise Marks Table */}
+      {marks.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Subject-wise Marks</CardTitle>
+            <CardDescription>Detailed breakdown of your performance in each subject</CardDescription>
+          </CardHeader>
+          <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+              <table className="w-full">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left p-3 font-medium">Subject</th>
-                    <th className="text-center p-3 font-medium">Mid-1</th>
-                    <th className="text-center p-3 font-medium">Mid-2</th>
-                    <th className="text-center p-3 font-medium">Assignment</th>
-                    <th className="text-center p-3 font-medium">Total</th>
-                    <th className="text-center p-3 font-medium">Grade</th>
+                    <th className="text-left p-2">Subject</th>
+                    <th className="text-center p-2">Mid-1</th>
+                    <th className="text-center p-2">Mid-2</th>
+                    <th className="text-center p-2">Assignment</th>
+                    <th className="text-center p-2">Total</th>
+                    <th className="text-center p-2">Grade</th>
+                    <th className="text-center p-2">Progress</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {currentSemesterMarks.map((mark) => (
-                    <tr key={mark.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3 font-medium">{mark.subject}</td>
-                      <td className="text-center p-3">{mark.mid1}</td>
-                      <td className="text-center p-3">{mark.mid2}</td>
-                      <td className="text-center p-3">{mark.assignment}</td>
-                      <td className={`text-center p-3 font-bold ${getGradeColor(mark.total)}`}>
-                        {mark.total}
-                      </td>
-                      <td className={`text-center p-3 font-bold ${getGradeColor(mark.total)}`}>
-                        {getGradeLetter(mark.total)}
-                      </td>
-                    </tr>
-                  ))}
+                  {marks.map((mark) => {
+                    const grade = getGradeFromMarks(mark.total);
+                    return (
+                      <tr key={mark.id} className="border-b hover:bg-gray-50">
+                        <td className="p-2 font-medium">{mark.subject}</td>
+                        <td className="text-center p-2">{mark.mid1}</td>
+                        <td className="text-center p-2">{mark.mid2}</td>
+                        <td className="text-center p-2">{mark.assignment}</td>
+                        <td className="text-center p-2 font-bold">{mark.total.toFixed(1)}</td>
+                        <td className="text-center p-2">
+                          <Badge className={getGradeColor(grade)}>
+                            {grade}
+                          </Badge>
+                        </td>
+                        <td className="text-center p-2">
+                          <Progress value={mark.total} className="w-20" />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-gray-500">No marks available for Semester {selectedSemester}</p>
-              <p className="text-sm text-gray-400 mt-2">
-                Marks will appear here once they are entered by your instructors
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>No Marks Available</CardTitle>
+            <CardDescription>
+              No marks have been published for this semester yet. Please check back later.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
+      {/* Academic Performance Analysis */}
       <Card>
         <CardHeader>
-          <CardTitle>Academic Overview</CardTitle>
-          <CardDescription>Your overall academic performance</CardDescription>
+          <CardTitle>Performance Analysis</CardTitle>
+          <CardDescription>Insights about your academic progress</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h4 className="font-medium mb-3">Current Semester Performance</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm">Semester:</span>
-                  <span className="text-sm font-medium">{selectedSemester}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">SGPA:</span>
-                  <span className="text-sm font-medium">{currentSGPA}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Subjects:</span>
-                  <span className="text-sm font-medium">{currentSemesterMarks.length}</span>
-                </div>
-              </div>
+            <div className="space-y-4">
+              <h4 className="font-semibold">Strengths</h4>
+              <ul className="space-y-2">
+                {marks.filter(m => m.total >= 80).map(mark => (
+                  <li key={mark.id} className="flex items-center text-green-700">
+                    <Award className="h-4 w-4 mr-2" />
+                    Excellent in {mark.subject} ({mark.total.toFixed(1)}%)
+                  </li>
+                ))}
+                {marks.filter(m => m.total >= 80).length === 0 && (
+                  <li className="text-gray-500">Work on improving your scores to identify strengths</li>
+                )}
+              </ul>
             </div>
-            
-            <div>
-              <h4 className="font-medium mb-3">Overall Performance</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm">Year:</span>
-                  <span className="text-sm font-medium">{studentData.year}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">CGPA:</span>
-                  <span className="text-sm font-medium">{studentData.cgpa}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Branch:</span>
-                  <span className="text-sm font-medium">{studentData.branch}</span>
-                </div>
-              </div>
+            <div className="space-y-4">
+              <h4 className="font-semibold">Areas for Improvement</h4>
+              <ul className="space-y-2">
+                {marks.filter(m => m.total < 70).map(mark => (
+                  <li key={mark.id} className="flex items-center text-orange-700">
+                    <Target className="h-4 w-4 mr-2" />
+                    Focus on {mark.subject} ({mark.total.toFixed(1)}%)
+                  </li>
+                ))}
+                {marks.filter(m => m.total < 70).length === 0 && (
+                  <li className="text-green-700">Great job! Keep up the good work!</li>
+                )}
+              </ul>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Academic Chatbot */}
+      <AcademicChatbot 
+        currentSGPA={currentSGPA}
+        currentCGPA={currentCGPA}
+        marks={marks}
+        semester={studentData.semester}
+      />
     </div>
   );
 };

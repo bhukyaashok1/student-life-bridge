@@ -33,8 +33,23 @@ export const StudentTimetable: React.FC = () => {
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+  // Fixed time slots based on year
+  const getTimeSlotsForYear = (year: number): string[] => {
+    if (year === 1) {
+      return ['09:00-10:00', '10:00-11:00', '11:00-12:00', '12:00-12:40', '12:40-01:40', '01:40-02:40', '02:40-03:40'];
+    } else {
+      return ['10:00-11:00', '11:00-12:00', '12:00-01:00', '01:00-01:40', '01:40-02:40', '02:40-03:40', '03:40-04:40'];
+    }
+  };
+
+  const isLunchSlot = (timeSlot: string): boolean => {
+    return timeSlot === '12:00-12:40' || timeSlot === '01:00-01:40';
+  };
+
   useEffect(() => {
     if (studentData && !authLoading) {
+      const fixedTimeSlots = getTimeSlotsForYear(studentData.year);
+      setTimeSlots(fixedTimeSlots);
       fetchTimetable();
       fetchAttendanceData();
     }
@@ -55,14 +70,12 @@ export const StudentTimetable: React.FC = () => {
       });
 
       const { data, error: fetchError } = await supabase
-        .from('timetables')
-        .select('*')
-        .eq('branch', studentData.branch)
-        .eq('year', studentData.year)
-        .eq('semester', studentData.semester)
-        .eq('section', studentData.section)
-        .order('day_of_week')
-        .order('time_slot');
+        .rpc('get_timetable_for_class', {
+          p_branch: studentData.branch,
+          p_year: studentData.year,
+          p_semester: studentData.semester,
+          p_section: studentData.section
+        });
 
       if (fetchError) {
         console.error('Error fetching timetable:', fetchError);
@@ -71,21 +84,6 @@ export const StudentTimetable: React.FC = () => {
       }
 
       console.log('Fetched timetable data:', data);
-
-      // Extract unique time slots and sort them
-      const uniqueTimeSlots = [...new Set(data?.map(item => item.time_slot) || [])];
-      const sortedTimeSlots = uniqueTimeSlots.sort();
-      
-      // Add lunch break after 12:30 slot if it exists
-      const timeSlotsWithLunch = [];
-      for (const slot of sortedTimeSlots) {
-        timeSlotsWithLunch.push(slot);
-        if (slot.includes('12:30') || slot.includes('12:00')) {
-          timeSlotsWithLunch.push('12:30-01:30 (Lunch Break)');
-        }
-      }
-      
-      setTimeSlots(timeSlotsWithLunch);
 
       // Group by day
       const groupedData: Record<string, TimetableEntry[]> = {};
@@ -356,80 +354,69 @@ export const StudentTimetable: React.FC = () => {
         </div>
       )}
 
-      {/* Dynamic Timetable */}
-      {Object.keys(timetableData).some(day => timetableData[day].length > 0) ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Weekly Timetable</CardTitle>
-            <CardDescription>Your complete weekly schedule</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <div className="min-w-full">
-                <div className="grid grid-cols-7 gap-2 mb-4">
-                  <div className="font-semibold text-center p-2 bg-gray-50 rounded">Time</div>
-                  {days.map(day => (
-                    <div key={day} className="font-semibold text-center p-2 bg-gray-50 rounded">
-                      {day}
-                    </div>
-                  ))}
-                </div>
-                
-                {timeSlots.map(timeSlot => (
-                  <div key={timeSlot} className="grid grid-cols-7 gap-2 mb-2">
-                    <div className={`text-sm font-medium p-2 rounded text-center ${
-                      timeSlot.includes('Lunch') 
-                        ? 'bg-orange-100 text-orange-800' 
-                        : 'bg-gray-100'
-                    }`}>
-                      {timeSlot}
-                    </div>
-                    {timeSlot.includes('Lunch') ? (
-                      // Lunch break row
-                      days.map(day => (
-                        <div key={`${day}-${timeSlot}`} className="min-h-[50px]">
-                          <div className="p-2 rounded border bg-orange-50 text-center text-sm text-orange-700 border-orange-200">
-                            Lunch Break
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      // Regular class rows
-                      days.map(day => {
-                        const daySchedule = timetableData[day] || [];
-                        const classItem = daySchedule.find(item => item.time_slot === timeSlot);
-                        
-                        return (
-                          <div key={`${day}-${timeSlot}`} className="min-h-[50px]">
-                            {classItem ? (
-                              <div className={`p-2 rounded border text-xs font-medium text-center ${getSubjectColor(classItem.subject)}`}>
-                                {classItem.subject}
-                              </div>
-                            ) : (
-                              <div className="p-2 border border-gray-200 rounded bg-gray-50 text-center text-xs text-gray-400">
-                                Free
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
+      {/* Dynamic Timetable with Fixed Time Slots */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Weekly Timetable</CardTitle>
+          <CardDescription>Your complete weekly schedule with fixed time slots for Year {studentData.year}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <div className="min-w-full">
+              <div className="grid grid-cols-7 gap-2 mb-4">
+                <div className="font-semibold text-center p-2 bg-gray-50 rounded">Time</div>
+                {days.map(day => (
+                  <div key={day} className="font-semibold text-center p-2 bg-gray-50 rounded">
+                    {day}
                   </div>
                 ))}
               </div>
+              
+              {timeSlots.map(timeSlot => (
+                <div key={timeSlot} className="grid grid-cols-7 gap-2 mb-2">
+                  <div className={`text-sm font-medium p-2 rounded text-center ${
+                    isLunchSlot(timeSlot)
+                      ? 'bg-orange-100 text-orange-800' 
+                      : 'bg-gray-100'
+                  }`}>
+                    {isLunchSlot(timeSlot) ? `${timeSlot} (Lunch)` : timeSlot}
+                  </div>
+                  {isLunchSlot(timeSlot) ? (
+                    // Lunch break row
+                    days.map(day => (
+                      <div key={`${day}-${timeSlot}`} className="min-h-[50px]">
+                        <div className="p-2 rounded border bg-orange-50 text-center text-sm text-orange-700 border-orange-200">
+                          Lunch Break
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    // Regular class rows
+                    days.map(day => {
+                      const daySchedule = timetableData[day] || [];
+                      const classItem = daySchedule.find(item => item.time_slot === timeSlot);
+                      
+                      return (
+                        <div key={`${day}-${timeSlot}`} className="min-h-[50px]">
+                          {classItem ? (
+                            <div className={`p-2 rounded border text-xs font-medium text-center ${getSubjectColor(classItem.subject)}`}>
+                              {classItem.subject}
+                            </div>
+                          ) : (
+                            <div className="p-2 border border-gray-200 rounded bg-gray-50 text-center text-xs text-gray-400">
+                              Free
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              ))}
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>No Timetable Available</CardTitle>
-            <CardDescription>
-              No timetable has been created for your class yet. Please contact your administrator.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Subject Overview */}
       {Object.keys(timetableData).some(day => timetableData[day].length > 0) && (

@@ -35,10 +35,22 @@ const defaultSubjects = [
 export const useTimetable = (branch: string, year: string, semester: string, section: string) => {
   const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
   const [subjects, setSubjects] = useState<string[]>(defaultSubjects);
+  const [validTimeSlots, setValidTimeSlots] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
+  // Get valid time slots based on year
+  const getValidTimeSlots = (yearNum: number): string[] => {
+    if (yearNum === 1) {
+      return ['09:00-10:00', '10:00-11:00', '11:00-12:00', '12:00-12:40', '12:40-01:40', '01:40-02:40', '02:40-03:40'];
+    } else {
+      return ['10:00-11:00', '11:00-12:00', '12:00-01:00', '01:00-01:40', '01:40-02:40', '02:40-03:40', '03:40-04:40'];
+    }
+  };
+
   useEffect(() => {
+    const timeSlots = getValidTimeSlots(parseInt(year));
+    setValidTimeSlots(timeSlots);
     fetchTimetable();
     fetchSubjects();
   }, [branch, year, semester, section]);
@@ -70,14 +82,12 @@ export const useTimetable = (branch: string, year: string, semester: string, sec
   const fetchTimetable = async () => {
     try {
       const { data, error } = await supabase
-        .from('timetables')
-        .select('*')
-        .eq('branch', branch)
-        .eq('year', parseInt(year))
-        .eq('semester', parseInt(semester))
-        .eq('section', section)
-        .order('day_of_week')
-        .order('time_slot');
+        .rpc('get_timetable_for_class', {
+          p_branch: branch,
+          p_year: parseInt(year),
+          p_semester: parseInt(semester),
+          p_section: section
+        });
 
       if (error) {
         console.error('Error fetching timetable:', error);
@@ -93,6 +103,19 @@ export const useTimetable = (branch: string, year: string, semester: string, sec
   const addTimetableEntry = async (entry: Omit<TimetableEntry, 'id'>) => {
     setLoading(true);
     try {
+      // Validate time slot
+      const yearNum = parseInt(year);
+      const validSlots = getValidTimeSlots(yearNum);
+      
+      if (!validSlots.includes(entry.time_slot)) {
+        toast({
+          title: "Invalid Time Slot",
+          description: `Time slot ${entry.time_slot} is not valid for Year ${yearNum}. Valid slots: ${validSlots.join(', ')}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { error } = await supabase
         .from('timetables')
         .insert(entry);
@@ -101,7 +124,7 @@ export const useTimetable = (branch: string, year: string, semester: string, sec
         console.error('Error adding timetable entry:', error);
         toast({
           title: "Error",
-          description: "Failed to add timetable entry",
+          description: error.message || "Failed to add timetable entry",
           variant: "destructive",
         });
         return;
@@ -128,6 +151,21 @@ export const useTimetable = (branch: string, year: string, semester: string, sec
   const updateTimetableEntry = async (id: string, updates: Partial<TimetableEntry>) => {
     setLoading(true);
     try {
+      // Validate time slot if it's being updated
+      if (updates.time_slot) {
+        const yearNum = parseInt(year);
+        const validSlots = getValidTimeSlots(yearNum);
+        
+        if (!validSlots.includes(updates.time_slot)) {
+          toast({
+            title: "Invalid Time Slot",
+            description: `Time slot ${updates.time_slot} is not valid for Year ${yearNum}. Valid slots: ${validSlots.join(', ')}`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from('timetables')
         .update(updates)
@@ -137,7 +175,7 @@ export const useTimetable = (branch: string, year: string, semester: string, sec
         console.error('Error updating timetable entry:', error);
         toast({
           title: "Error",
-          description: "Failed to update timetable entry",
+          description: error.message || "Failed to update timetable entry",
           variant: "destructive",
         });
         return;
@@ -200,6 +238,7 @@ export const useTimetable = (branch: string, year: string, semester: string, sec
   return {
     timetable,
     subjects,
+    validTimeSlots,
     loading,
     addTimetableEntry,
     updateTimetableEntry,

@@ -310,6 +310,28 @@ export type Database = {
           name: string
         }[]
       }
+      get_time_slots_for_year: {
+        Args: { p_year: number }
+        Returns: string[]
+      }
+      get_timetable_for_class: {
+        Args: {
+          p_branch: string
+          p_year: number
+          p_semester: number
+          p_section: string
+        }
+        Returns: {
+          id: string
+          day_of_week: string
+          time_slot: string
+          subject: string
+          branch: string
+          year: number
+          semester: number
+          section: string
+        }[]
+      }
       save_attendance_records: {
         Args: { p_records: Json }
         Returns: undefined
