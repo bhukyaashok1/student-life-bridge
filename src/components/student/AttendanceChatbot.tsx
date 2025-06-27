@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { X, Send, MessageCircle } from 'lucide-react';
+import { X, Send, MessageCircle, Minimize2, Maximize2 } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
 
 interface Message {
@@ -47,6 +47,7 @@ export const AttendanceChatbot: React.FC<AttendanceChatbotProps> = ({
   ]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   const generateAttendanceContext = () => {
     const context = `
@@ -128,30 +129,52 @@ The student needs to maintain 75% attendance to meet academic requirements.
     "What's my current attendance status?"
   ];
 
+  if (isMinimized) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50">
+        <Button
+          onClick={() => setIsMinimized(false)}
+          className="h-12 w-12 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700"
+        >
+          <MessageCircle className="h-6 w-6" />
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <Card className="fixed bottom-4 right-4 w-96 h-96 z-50 shadow-lg">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+    <Card className="fixed bottom-4 right-4 w-96 h-[500px] z-50 shadow-xl border-2 border-blue-200">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-blue-50">
         <CardTitle className="text-lg flex items-center gap-2">
-          <MessageCircle className="h-5 w-5" />
+          <MessageCircle className="h-5 w-5 text-blue-600" />
           Attendance Assistant
         </CardTitle>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onClose}
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsMinimized(true)}
+          >
+            <Minimize2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent className="flex flex-col h-full">
-        <div className="flex-1 overflow-y-auto space-y-3 mb-4">
+      <CardContent className="flex flex-col h-full p-4">
+        <div className="flex-1 overflow-y-auto space-y-3 mb-4 max-h-80">
           {messages.map((message) => (
             <div
               key={message.id}
               className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[80%] p-3 rounded-lg text-sm ${
+                className={`max-w-[85%] p-3 rounded-lg text-sm ${
                   message.isUser
                     ? 'bg-blue-600 text-white ml-4'
                     : 'bg-gray-100 text-gray-900 mr-4'
@@ -177,12 +200,12 @@ The student needs to maintain 75% attendance to meet academic requirements.
         {messages.length === 1 && (
           <div className="mb-4">
             <p className="text-xs text-gray-500 mb-2">Quick questions:</p>
-            <div className="space-y-1">
+            <div className="space-y-1 max-h-32 overflow-y-auto">
               {quickQuestions.map((question, index) => (
                 <button
                   key={index}
                   onClick={() => setInputText(question)}
-                  className="w-full text-left text-xs p-2 bg-gray-50 hover:bg-gray-100 rounded border text-gray-700"
+                  className="w-full text-left text-xs p-2 bg-gray-50 hover:bg-gray-100 rounded border text-gray-700 transition-colors"
                 >
                   {question}
                 </button>
@@ -191,7 +214,7 @@ The student needs to maintain 75% attendance to meet academic requirements.
           </div>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 mt-auto">
           <Input
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
@@ -204,6 +227,7 @@ The student needs to maintain 75% attendance to meet academic requirements.
             onClick={sendMessage}
             disabled={isLoading || !inputText.trim()}
             size="sm"
+            className="px-3"
           >
             <Send className="h-4 w-4" />
           </Button>

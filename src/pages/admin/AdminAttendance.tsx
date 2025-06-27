@@ -3,9 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Input } from '../../components/ui/input';
 import { Calendar, Users, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
-import { useToast } from '../../components/ui/use-toast';
+import { useToast } from '../../hooks/use-toast';
 
 interface Student {
   id: string;
@@ -23,28 +24,25 @@ interface TimetableEntry {
   year: number;
   semester: number;
   section: string;
+  day_of_week: string;
 }
 
 export const AdminAttendance: React.FC = () => {
-  const [selectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedBranch, setSelectedBranch] = useState('Computer Science');
   const [selectedYear, setSelectedYear] = useState('3');
   const [selectedSection, setSelectedSection] = useState('A');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
-  const [todaysClasses, setTodaysClasses] = useState<TimetableEntry[]>([]);
+  const [availableClasses, setAvailableClasses] = useState<TimetableEntry[]>([]);
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const today = new Date();
-  const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'long' });
-  const currentTime = today.getHours() * 100 + today.getMinutes();
-
   useEffect(() => {
     fetchStudents();
-    fetchTodaysClasses();
-  }, [selectedBranch, selectedYear, selectedSection]);
+    fetchAvailableClasses();
+  }, [selectedBranch, selectedYear, selectedSection, selectedDate]);
 
   useEffect(() => {
     if (selectedSubject) {
@@ -85,8 +83,11 @@ export const AdminAttendance: React.FC = () => {
     }
   };
 
-  const fetchTodaysClasses = async () => {
+  const fetchAvailableClasses = async () => {
     try {
+      const selectedDateObj = new Date(selectedDate);
+      const dayOfWeek = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' });
+
       const { data, error } = await supabase
         .from('timetables')
         .select('*')
@@ -97,17 +98,17 @@ export const AdminAttendance: React.FC = () => {
         .order('time_slot');
 
       if (error) {
-        console.error('Error fetching today\'s classes:', error);
+        console.error('Error fetching classes:', error);
         return;
       }
 
-      setTodaysClasses(data || []);
+      setAvailableClasses(data || []);
       
       if (data && data.length > 0 && !selectedSubject) {
         setSelectedSubject(data[0].subject);
       }
     } catch (error) {
-      console.error('Error in fetchTodaysClasses:', error);
+      console.error('Error in fetchAvailableClasses:', error);
     }
   };
 
@@ -149,18 +150,6 @@ export const AdminAttendance: React.FC = () => {
     }
   };
 
-  const isClassActive = (timeSlot: string) => {
-    const [startTime] = timeSlot.split('-');
-    const [hours, minutes] = startTime.split(':').map(Number);
-    const classTime = hours * 100 + minutes;
-    
-    const buffer = 15;
-    const startBuffer = classTime - buffer;
-    const endBuffer = classTime + 100 + buffer;
-    
-    return currentTime >= startBuffer && currentTime <= endBuffer;
-  };
-
   const markAttendance = (studentId: string, isPresent: boolean) => {
     setAttendance(prev => ({
       ...prev,
@@ -187,14 +176,13 @@ export const AdminAttendance: React.FC = () => {
   const saveAttendance = async () => {
     setLoading(true);
     try {
-      // Use individual insert/upsert instead of RPC function
       const attendanceRecords = students.map(student => ({
         student_id: student.id,
         date: selectedDate,
         subject: selectedSubject,
         branch: selectedBranch,
         year: parseInt(selectedYear),
-        semester: 1, // Default semester
+        semester: 1,
         section: selectedSection,
         is_present: attendance[student.id] || false
       }));
@@ -247,23 +235,30 @@ export const AdminAttendance: React.FC = () => {
     percentage: students.length > 0 ? Math.round((Object.values(attendance).filter(Boolean).length / students.length) * 100) : 0
   };
 
-  const selectedClass = todaysClasses.find(c => c.subject === selectedSubject);
-  const isCurrentClassActive = selectedClass ? isClassActive(selectedClass.time_slot) : false;
-
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Attendance Management</h1>
-        <p className="text-gray-600">Mark attendance for today's classes ({dayOfWeek})</p>
+        <p className="text-gray-600">Mark attendance for any date and class</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Today's Classes</CardTitle>
-          <CardDescription>Select a class to mark attendance</CardDescription>
+          <CardTitle>Select Class and Date</CardTitle>
+          <CardDescription>Choose the class and date to mark attendance</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+              <label className="text-sm font-medium">Date</label>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-full"
+              />
+            </div>
+
             <Select value={selectedBranch} onValueChange={setSelectedBranch}>
               <SelectTrigger>
                 <SelectValue placeholder="Branch" />
@@ -305,28 +300,28 @@ export const AdminAttendance: React.FC = () => {
                 <SelectValue placeholder="Select Class" />
               </SelectTrigger>
               <SelectContent>
-                {todaysClasses.map(cls => (
+                {availableClasses.map(cls => (
                   <SelectItem key={cls.id} value={cls.subject}>
                     {cls.subject} ({cls.time_slot})
-                    {isClassActive(cls.time_slot) && (
-                      <span className="ml-2 text-green-600 font-semibold">• ACTIVE</span>
-                    )}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          {todaysClasses.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
+          {availableClasses.length === 0 && (
+            <div className="text-center py-8 text-gray-500 mt-4">
               <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              <p>No classes scheduled for today</p>
+              <p>No classes scheduled for the selected date</p>
+              <p className="text-sm text-gray-400 mt-2">
+                Selected date: {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              </p>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {selectedSubject && (
+      {selectedSubject && availableClasses.length > 0 && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <Card>
@@ -378,21 +373,12 @@ export const AdminAttendance: React.FC = () => {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <div>
-                  <CardTitle className="flex items-center gap-2">
-                    Mark Attendance
-                    {isCurrentClassActive && (
-                      <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
-                        ACTIVE CLASS
-                      </span>
-                    )}
-                  </CardTitle>
+                  <CardTitle>Mark Attendance</CardTitle>
                   <CardDescription>
                     {selectedSubject} - {selectedBranch} Year {selectedYear} Section {selectedSection}
-                    {selectedClass && (
-                      <span className="block text-sm text-gray-500 mt-1">
-                        Time: {selectedClass.time_slot}
-                      </span>
-                    )}
+                    <span className="block text-sm text-gray-500 mt-1">
+                      Date: {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    </span>
                   </CardDescription>
                 </div>
                 <div className="flex space-x-2">

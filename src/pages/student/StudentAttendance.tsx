@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { Calendar, Clock, TrendingUp, MessageCircle } from 'lucide-react';
+import { Calendar, Clock, TrendingUp, MessageCircle, Bell } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../integrations/supabase/client';
 import { AttendanceChatbot } from '../../components/student/AttendanceChatbot';
+import { useToast } from '../../hooks/use-toast';
 
 interface AttendanceRecord {
   id: string;
@@ -35,15 +36,22 @@ export const StudentAttendance: React.FC = () => {
   const [subjectAttendance, setSubjectAttendance] = useState<SubjectAttendance[]>([]);
   const [timetableData, setTimetableData] = useState<TimetableEntry[]>([]);
   const [currentClasses, setCurrentClasses] = useState<TimetableEntry[]>([]);
+  const [todaysClasses, setTodaysClasses] = useState<TimetableEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showChatbot, setShowChatbot] = useState(false);
+  const [notifications, setNotifications] = useState<string[]>([]);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (studentData && !authLoading) {
       fetchData();
-      const interval = setInterval(checkCurrentClasses, 60000); // Check every minute
-      return () => clearInterval(interval);
+      const interval = setInterval(checkCurrentClasses, 60000);
+      const notificationInterval = setInterval(checkForClassNotifications, 300000); // Check every 5 minutes
+      return () => {
+        clearInterval(interval);
+        clearInterval(notificationInterval);
+      };
     }
   }, [studentData, authLoading]);
 
@@ -103,6 +111,7 @@ export const StudentAttendance: React.FC = () => {
 
     setTimetableData(data || []);
     checkCurrentClasses(data || []);
+    checkTodaysClasses(data || []);
   };
 
   const checkCurrentClasses = (timetable = timetableData) => {
@@ -116,12 +125,46 @@ export const StudentAttendance: React.FC = () => {
       const [startTime] = entry.time_slot.split('-');
       const [hours, minutes] = startTime.split(':').map(Number);
       const classTime = hours * 100 + minutes;
-      const classEndTime = classTime + 100; // Assuming 1-hour classes
+      const classEndTime = classTime + 100;
       
       return currentTime >= classTime && currentTime <= classEndTime;
     });
 
     setCurrentClasses(activeClasses);
+  };
+
+  const checkTodaysClasses = (timetable = timetableData) => {
+    const now = new Date();
+    const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
+    const todayClasses = timetable.filter(entry => entry.day_of_week === currentDay);
+    setTodaysClasses(todayClasses);
+  };
+
+  const checkForClassNotifications = () => {
+    const now = new Date();
+    const currentTime = now.getHours() * 100 + now.getMinutes();
+
+    todaysClasses.forEach(classEntry => {
+      const [startTime, endTime] = classEntry.time_slot.split('-');
+      const [endHours, endMinutes] = endTime.split(':').map(Number);
+      const classEndTime = endHours * 100 + endMinutes;
+
+      // Notify 10 minutes after class ends if attendance not marked
+      if (currentTime >= classEndTime + 10 && currentTime <= classEndTime + 15) {
+        const today = new Date().toISOString().split('T')[0];
+        const hasMarkedAttendance = attendanceRecords.some(record => 
+          record.date === today && record.subject === classEntry.subject
+        );
+
+        if (!hasMarkedAttendance) {
+          toast({
+            title: "Attendance Reminder",
+            description: `Please mark your attendance for ${classEntry.subject} class that ended at ${endTime}`,
+            duration: 10000,
+          });
+        }
+      }
+    });
   };
 
   const calculateSubjectAttendance = (records: AttendanceRecord[]) => {
@@ -142,11 +185,7 @@ export const StudentAttendance: React.FC = () => {
     const subjectAttendanceData: SubjectAttendance[] = Array.from(subjectMap.entries()).map(
       ([subject, data]) => {
         const percentage = data.total > 0 ? Math.round((data.attended / data.total) * 100) : 0;
-        
-        // Calculate classes needed to reach 75%
         const classesToReach75 = Math.max(0, Math.ceil((0.75 * data.total - data.attended) / 0.25));
-        
-        // Calculate maximum absences while maintaining 75%
         const maxAbsences = Math.floor(data.total * 0.25);
 
         return {
@@ -184,13 +223,28 @@ export const StudentAttendance: React.FC = () => {
 
       if (error) {
         console.error('Error marking attendance:', error);
+        toast({
+          title: "Error",
+          description: "Failed to mark attendance. Please try again.",
+          variant: "destructive",
+        });
         return;
       }
+
+      toast({
+        title: "Success",
+        description: `Attendance marked as ${isPresent ? 'Present' : 'Absent'} for ${classEntry.subject}`,
+      });
 
       // Refresh data
       await fetchAttendanceData();
     } catch (error) {
       console.error('Error in markAttendance:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive",
+      });
     }
   };
 
@@ -244,7 +298,7 @@ export const StudentAttendance: React.FC = () => {
   const totalClassesToReach75 = subjectAttendance.reduce((sum, subject) => sum + subject.classesToReach75, 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-32">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Attendance</h1>
@@ -263,7 +317,10 @@ export const StudentAttendance: React.FC = () => {
       {currentClasses.length > 0 && (
         <Card className="border-blue-200 bg-blue-50">
           <CardHeader>
-            <CardTitle className="text-blue-800">Current Classes - Mark Attendance</CardTitle>
+            <CardTitle className="text-blue-800 flex items-center gap-2">
+              <Bell className="h-5 w-5" />
+              Current Classes - Mark Attendance
+            </CardTitle>
             <CardDescription>You can mark attendance for these ongoing classes</CardDescription>
           </CardHeader>
           <CardContent>
@@ -293,6 +350,49 @@ export const StudentAttendance: React.FC = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Today's Remaining Classes */}
+      {todaysClasses.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Today's Schedule</CardTitle>
+            <CardDescription>All classes scheduled for today</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {todaysClasses.map((classEntry) => {
+                const today = new Date().toISOString().split('T')[0];
+                const hasMarked = attendanceRecords.some(record => 
+                  record.date === today && record.subject === classEntry.subject
+                );
+                const attendanceStatus = attendanceRecords.find(record => 
+                  record.date === today && record.subject === classEntry.subject
+                );
+
+                return (
+                  <div key={classEntry.id} className="p-3 border rounded-lg">
+                    <h4 className="font-medium">{classEntry.subject}</h4>
+                    <p className="text-sm text-gray-600">{classEntry.time_slot}</p>
+                    {hasMarked ? (
+                      <span className={`inline-block mt-2 px-2 py-1 rounded text-xs ${
+                        attendanceStatus?.is_present 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {attendanceStatus?.is_present ? 'Present' : 'Absent'}
+                      </span>
+                    ) : (
+                      <span className="inline-block mt-2 px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
+                        Not Marked
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>

@@ -97,8 +97,8 @@ export const StudentMarks: React.FC = () => {
       for (let sem = 1; sem <= studentData.semester; sem++) {
         sampleCGPAData.push({
           semester: sem,
-          sgpa: sem === studentData.semester ? parseFloat(studentRecord.sgpa || '0') : Math.random() * 2 + 7,
-          cgpa: sem === studentData.semester ? parseFloat(studentRecord.cgpa || '0') : Math.random() * 1.5 + 7.5
+          sgpa: sem === studentData.semester ? parseFloat(String(studentRecord.sgpa || '0')) : Math.random() * 2 + 7,
+          cgpa: sem === studentData.semester ? parseFloat(String(studentRecord.cgpa || '0')) : Math.random() * 1.5 + 7.5
         });
       }
       
@@ -183,7 +183,7 @@ export const StudentMarks: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-32">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Marks & Performance</h1>
         <p className="text-gray-600">
@@ -360,7 +360,7 @@ export const StudentMarks: React.FC = () => {
         </Card>
       )}
 
-      {/* Academic Performance Analysis */}
+      {/* Performance Analysis */}
       <Card>
         <CardHeader>
           <CardTitle>Performance Analysis</CardTitle>
