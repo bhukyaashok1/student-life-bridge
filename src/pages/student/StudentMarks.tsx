@@ -1,14 +1,17 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '../../components/ui/chart';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { TrendingUp, Target, BookOpen, Award } from 'lucide-react';
+import { TrendingUp, Target, BookOpen, Award, Edit, Plus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../integrations/supabase/client';
 import { AcademicChatbot } from '../../components/student/AcademicChatbot';
+import { useToast } from '../../hooks/use-toast';
 
 interface MarkRecord {
   id: string;
@@ -31,6 +34,14 @@ export const StudentMarks: React.FC = () => {
   const [cgpaData, setCgpaData] = useState<CGPAData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAddMarks, setShowAddMarks] = useState(false);
+  const [newMark, setNewMark] = useState({
+    subject: '',
+    mid1: 0,
+    mid2: 0,
+    assignment: 0
+  });
+  const { toast } = useToast();
 
   useEffect(() => {
     if (studentData && !authLoading) {
@@ -48,11 +59,18 @@ export const StudentMarks: React.FC = () => {
         .from('students')
         .select('id')
         .eq('profile_id', studentData.id)
-        .single();
+        .maybeSingle();
 
-      if (studentError || !studentRecord) {
+      if (studentError) {
         console.error('Error fetching student record:', studentError);
         setError('Failed to fetch student data');
+        return;
+      }
+
+      if (!studentRecord) {
+        console.log('No student record found, showing empty state');
+        setMarks([]);
+        setError(null);
         return;
       }
 
@@ -68,7 +86,14 @@ export const StudentMarks: React.FC = () => {
         return;
       }
 
-      setMarks(marksData || []);
+      // Calculate total for each mark record
+      const marksWithTotal = (marksData || []).map(mark => ({
+        ...mark,
+        total: (mark.mid1 || 0) + (mark.mid2 || 0) + (mark.assignment || 0)
+      }));
+
+      setMarks(marksWithTotal);
+      setError(null);
     } catch (error) {
       console.error('Error in fetchMarks:', error);
       setError('An unexpected error occurred');
@@ -85,14 +110,20 @@ export const StudentMarks: React.FC = () => {
         .from('students')
         .select('sgpa, cgpa')
         .eq('profile_id', studentData.id)
-        .single();
+        .maybeSingle();
 
-      if (studentError || !studentRecord) {
+      if (studentError) {
         console.error('Error fetching CGPA data:', studentError);
         return;
       }
 
-      // Generate sample CGPA progression data (in real app, this should come from database)
+      if (!studentRecord) {
+        console.log('No student record found for CGPA data');
+        setCgpaData([]);
+        return;
+      }
+
+      // Generate sample CGPA progression data
       const sampleCGPAData = [];
       for (let sem = 1; sem <= studentData.semester; sem++) {
         sampleCGPAData.push({
@@ -105,6 +136,76 @@ export const StudentMarks: React.FC = () => {
       setCgpaData(sampleCGPAData);
     } catch (error) {
       console.error('Error fetching CGPA data:', error);
+    }
+  };
+
+  const handleAddMarks = async () => {
+    if (!studentData || !newMark.subject) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { data: studentRecord, error: studentError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('profile_id', studentData.id)
+        .maybeSingle();
+
+      if (studentError || !studentRecord) {
+        toast({
+          title: "Error",
+          description: "Student record not found",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const total = newMark.mid1 + newMark.mid2 + newMark.assignment;
+
+      const { error: insertError } = await supabase
+        .from('marks')
+        .insert({
+          student_id: studentRecord.id,
+          subject: newMark.subject,
+          branch: studentData.branch,
+          year: studentData.year,
+          semester: studentData.semester,
+          section: studentData.section,
+          mid1: newMark.mid1,
+          mid2: newMark.mid2,
+          assignment: newMark.assignment,
+          total: total
+        });
+
+      if (insertError) {
+        toast({
+          title: "Error",
+          description: "Failed to add marks",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "Marks added successfully"
+      });
+
+      setShowAddMarks(false);
+      setNewMark({ subject: '', mid1: 0, mid2: 0, assignment: 0 });
+      fetchMarks();
+    } catch (error) {
+      console.error('Error adding marks:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
     }
   };
 
@@ -160,17 +261,6 @@ export const StudentMarks: React.FC = () => {
     );
   }
 
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Marks & Performance</h1>
-          <p className="text-red-600">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
   if (!studentData) {
     return (
       <div className="space-y-6">
@@ -184,12 +274,93 @@ export const StudentMarks: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-32">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Marks & Performance</h1>
-        <p className="text-gray-600">
-          {studentData.branch} - Year {studentData.year}, Semester {studentData.semester}
-        </p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Marks & Performance</h1>
+          <p className="text-gray-600">
+            {studentData.branch} - Year {studentData.year}, Semester {studentData.semester}
+          </p>
+        </div>
+        
+        <Dialog open={showAddMarks} onOpenChange={setShowAddMarks}>
+          <DialogTrigger asChild>
+            <Button className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Add Marks
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Marks</DialogTitle>
+              <DialogDescription>
+                Enter your marks for a subject
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Subject</label>
+                <Input
+                  value={newMark.subject}
+                  onChange={(e) => setNewMark({ ...newMark, subject: e.target.value })}
+                  placeholder="Enter subject name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Mid-1 Marks</label>
+                <Input
+                  type="number"
+                  value={newMark.mid1}
+                  onChange={(e) => setNewMark({ ...newMark, mid1: parseFloat(e.target.value) || 0 })}
+                  placeholder="0"
+                  min="0"
+                  max="100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Mid-2 Marks</label>
+                <Input
+                  type="number"
+                  value={newMark.mid2}
+                  onChange={(e) => setNewMark({ ...newMark, mid2: parseFloat(e.target.value) || 0 })}
+                  placeholder="0"
+                  min="0"
+                  max="100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Assignment Marks</label>
+                <Input
+                  type="number"
+                  value={newMark.assignment}
+                  onChange={(e) => setNewMark({ ...newMark, assignment: parseFloat(e.target.value) || 0 })}
+                  placeholder="0"
+                  min="0"
+                  max="100"
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setShowAddMarks(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAddMarks}>
+                  Add Marks
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
+
+      {error && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-red-600">Error</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-red-600">{error}</p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Performance Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -354,7 +525,7 @@ export const StudentMarks: React.FC = () => {
           <CardHeader>
             <CardTitle>No Marks Available</CardTitle>
             <CardDescription>
-              No marks have been published for this semester yet. Please check back later.
+              No marks have been published for this semester yet. You can add your own marks using the "Add Marks" button above.
             </CardDescription>
           </CardHeader>
         </Card>

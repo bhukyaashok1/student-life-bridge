@@ -1,16 +1,18 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import { Button } from '../../components/ui/button';
-import { Calendar, Clock, TrendingUp, MessageCircle, Bell } from 'lucide-react';
+import { Badge } from '../../components/ui/badge';
+import { Progress } from '../../components/ui/progress';
+import { CalendarDays, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../integrations/supabase/client';
 import { AttendanceChatbot } from '../../components/student/AttendanceChatbot';
-import { useToast } from '../../hooks/use-toast';
+import { SelfAttendanceMarker } from '../../components/student/SelfAttendanceMarker';
 
 interface AttendanceRecord {
   id: string;
-  date: string;
   subject: string;
+  date: string;
   is_present: boolean;
 }
 
@@ -23,171 +25,78 @@ interface SubjectAttendance {
   maxAbsences: number;
 }
 
-interface TimetableEntry {
-  id: string;
-  day_of_week: string;
-  time_slot: string;
-  subject: string;
-}
-
 export const StudentAttendance: React.FC = () => {
   const { studentData, loading: authLoading } = useAuth();
-  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [subjectAttendance, setSubjectAttendance] = useState<SubjectAttendance[]>([]);
-  const [timetableData, setTimetableData] = useState<TimetableEntry[]>([]);
-  const [currentClasses, setCurrentClasses] = useState<TimetableEntry[]>([]);
-  const [todaysClasses, setTodaysClasses] = useState<TimetableEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showChatbot, setShowChatbot] = useState(false);
-  const [notifications, setNotifications] = useState<string[]>([]);
-  const { toast } = useToast();
 
   useEffect(() => {
     if (studentData && !authLoading) {
-      fetchData();
-      const interval = setInterval(checkCurrentClasses, 60000);
-      const notificationInterval = setInterval(checkForClassNotifications, 300000); // Check every 5 minutes
-      return () => {
-        clearInterval(interval);
-        clearInterval(notificationInterval);
-      };
+      fetchAttendanceData();
     }
   }, [studentData, authLoading]);
-
-  const fetchData = async () => {
-    if (!studentData) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      
-      await Promise.all([
-        fetchAttendanceData(),
-        fetchTimetableData()
-      ]);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      setError('An unexpected error occurred');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchAttendanceData = async () => {
     if (!studentData) return;
 
-    const { data: attendanceData, error: attendanceError } = await supabase
-      .from('attendance')
-      .select('*')
-      .eq('student_id', studentData.id)
-      .order('date', { ascending: false });
-
-    if (attendanceError) {
-      console.error('Error fetching attendance:', attendanceError);
-      return;
-    }
-
-    const records = attendanceData || [];
-    setAttendanceRecords(records);
-    calculateSubjectAttendance(records);
-  };
-
-  const fetchTimetableData = async () => {
-    if (!studentData) return;
-
-    const { data, error } = await supabase
-      .from('timetables')
-      .select('*')
-      .eq('branch', studentData.branch)
-      .eq('year', studentData.year)
-      .eq('semester', studentData.semester)
-      .eq('section', studentData.section);
-
-    if (error) {
-      console.error('Error fetching timetable:', error);
-      return;
-    }
-
-    setTimetableData(data || []);
-    checkCurrentClasses(data || []);
-    checkTodaysClasses(data || []);
-  };
-
-  const checkCurrentClasses = (timetable = timetableData) => {
-    const now = new Date();
-    const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
-    const currentTime = now.getHours() * 100 + now.getMinutes();
-
-    const todayClasses = timetable.filter(entry => entry.day_of_week === currentDay);
-    
-    const activeClasses = todayClasses.filter(entry => {
-      const [startTime] = entry.time_slot.split('-');
-      const [hours, minutes] = startTime.split(':').map(Number);
-      const classTime = hours * 100 + minutes;
-      const classEndTime = classTime + 100;
+    try {
+      setLoading(true);
       
-      return currentTime >= classTime && currentTime <= classEndTime;
-    });
+      const { data: studentRecord, error: studentError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('profile_id', studentData.id)
+        .maybeSingle();
 
-    setCurrentClasses(activeClasses);
-  };
-
-  const checkTodaysClasses = (timetable = timetableData) => {
-    const now = new Date();
-    const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
-    const todayClasses = timetable.filter(entry => entry.day_of_week === currentDay);
-    setTodaysClasses(todayClasses);
-  };
-
-  const checkForClassNotifications = () => {
-    const now = new Date();
-    const currentTime = now.getHours() * 100 + now.getMinutes();
-
-    todaysClasses.forEach(classEntry => {
-      const [startTime, endTime] = classEntry.time_slot.split('-');
-      const [endHours, endMinutes] = endTime.split(':').map(Number);
-      const classEndTime = endHours * 100 + endMinutes;
-
-      // Notify 10 minutes after class ends if attendance not marked
-      if (currentTime >= classEndTime + 10 && currentTime <= classEndTime + 15) {
-        const today = new Date().toISOString().split('T')[0];
-        const hasMarkedAttendance = attendanceRecords.some(record => 
-          record.date === today && record.subject === classEntry.subject
-        );
-
-        if (!hasMarkedAttendance) {
-          toast({
-            title: "Attendance Reminder",
-            description: `Please mark your attendance for ${classEntry.subject} class that ended at ${endTime}`,
-            duration: 10000,
-          });
-        }
+      if (studentError) {
+        console.error('Error fetching student record:', studentError);
+        setError('Failed to fetch student data');
+        return;
       }
-    });
-  };
 
-  const calculateSubjectAttendance = (records: AttendanceRecord[]) => {
-    const subjectMap = new Map<string, { attended: number; total: number }>();
-    
-    records.forEach(record => {
-      if (!subjectMap.has(record.subject)) {
-        subjectMap.set(record.subject, { attended: 0, total: 0 });
+      if (!studentRecord) {
+        console.log('No student record found');
+        setAttendance([]);
+        setSubjectAttendance([]);
+        setError(null);
+        return;
       }
+
+      const { data: attendanceData, error: attendanceError } = await supabase
+        .from('attendance')
+        .select('*')
+        .eq('student_id', studentRecord.id)
+        .eq('semester', studentData.semester)
+        .order('date', { ascending: false });
+
+      if (attendanceError) {
+        console.error('Error fetching attendance:', attendanceError);
+        setError('Failed to fetch attendance data');
+        return;
+      }
+
+      const attendanceRecords = attendanceData || [];
+      setAttendance(attendanceRecords);
+
+      // Calculate subject-wise attendance
+      const subjectMap = new Map<string, { attended: number; total: number }>();
       
-      const subjectData = subjectMap.get(record.subject)!;
-      subjectData.total++;
-      if (record.is_present) {
-        subjectData.attended++;
-      }
-    });
+      attendanceRecords.forEach(record => {
+        const current = subjectMap.get(record.subject) || { attended: 0, total: 0 };
+        subjectMap.set(record.subject, {
+          attended: current.attended + (record.is_present ? 1 : 0),
+          total: current.total + 1
+        });
+      });
 
-    const subjectAttendanceData: SubjectAttendance[] = Array.from(subjectMap.entries()).map(
-      ([subject, data]) => {
-        const percentage = data.total > 0 ? Math.round((data.attended / data.total) * 100) : 0;
+      const subjectAttendanceData: SubjectAttendance[] = Array.from(subjectMap.entries()).map(([subject, data]) => {
+        const percentage = data.total > 0 ? (data.attended / data.total) * 100 : 0;
         const classesToReach75 = Math.max(0, Math.ceil((0.75 * data.total - data.attended) / 0.25));
-        const maxAbsences = Math.floor(data.total * 0.25);
-
+        const maxAbsences = Math.max(0, Math.floor(data.attended / 3) - (data.total - data.attended));
+        
         return {
           subject,
           attended: data.attended,
@@ -196,56 +105,28 @@ export const StudentAttendance: React.FC = () => {
           classesToReach75,
           maxAbsences
         };
-      }
-    );
+      });
 
-    setSubjectAttendance(subjectAttendanceData);
+      setSubjectAttendance(subjectAttendanceData);
+      setError(null);
+    } catch (error) {
+      console.error('Error in fetchAttendanceData:', error);
+      setError('An unexpected error occurred');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const markAttendance = async (classEntry: TimetableEntry, isPresent: boolean) => {
-    if (!studentData) return;
+  const overallAttendance = {
+    totalClasses: attendance.length,
+    attendedClasses: attendance.filter(record => record.is_present).length,
+    percentage: attendance.length > 0 ? (attendance.filter(record => record.is_present).length / attendance.length) * 100 : 0
+  };
 
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      const { error } = await supabase
-        .from('attendance')
-        .insert({
-          student_id: studentData.id,
-          date: today,
-          subject: classEntry.subject,
-          branch: studentData.branch,
-          year: studentData.year,
-          semester: studentData.semester,
-          section: studentData.section,
-          is_present: isPresent
-        });
-
-      if (error) {
-        console.error('Error marking attendance:', error);
-        toast({
-          title: "Error",
-          description: "Failed to mark attendance. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      toast({
-        title: "Success",
-        description: `Attendance marked as ${isPresent ? 'Present' : 'Absent'} for ${classEntry.subject}`,
-      });
-
-      // Refresh data
-      await fetchAttendanceData();
-    } catch (error) {
-      console.error('Error in markAttendance:', error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred",
-        variant: "destructive",
-      });
-    }
+  const getAttendanceStatus = (percentage: number) => {
+    if (percentage >= 75) return { status: 'Good', color: 'bg-green-100 text-green-800' };
+    if (percentage >= 65) return { status: 'Warning', color: 'bg-yellow-100 text-yellow-800' };
+    return { status: 'Critical', color: 'bg-red-100 text-red-800' };
   };
 
   if (authLoading || loading) {
@@ -253,7 +134,7 @@ export const StudentAttendance: React.FC = () => {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Attendance</h1>
-          <p className="text-gray-600">Loading your attendance records...</p>
+          <p className="text-gray-600">Loading your attendance data...</p>
         </div>
       </div>
     );
@@ -265,12 +146,6 @@ export const StudentAttendance: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Attendance</h1>
           <p className="text-red-600">{error}</p>
-          <button 
-            onClick={fetchData}
-            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Retry
-          </button>
         </div>
       </div>
     );
@@ -287,269 +162,209 @@ export const StudentAttendance: React.FC = () => {
     );
   }
 
-  const overallAttendance = {
-    totalClasses: attendanceRecords.length,
-    attendedClasses: attendanceRecords.filter(record => record.is_present).length,
-    percentage: attendanceRecords.length > 0 
-      ? Math.round((attendanceRecords.filter(record => record.is_present).length / attendanceRecords.length) * 100)
-      : 0
-  };
-
-  const totalClassesToReach75 = subjectAttendance.reduce((sum, subject) => sum + subject.classesToReach75, 0);
-
   return (
-    <div className="space-y-6 pb-32">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Attendance</h1>
-          <p className="text-gray-600">Track your class attendance and maintain good records</p>
-        </div>
-        <Button
-          onClick={() => setShowChatbot(!showChatbot)}
-          className="flex items-center gap-2"
-        >
-          <MessageCircle className="h-4 w-4" />
-          Attendance Helper
-        </Button>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Attendance</h1>
+        <p className="text-gray-600">
+          {studentData.branch} - Year {studentData.year}, Semester {studentData.semester}
+        </p>
       </div>
 
-      {/* Current Classes - Mark Attendance */}
-      {currentClasses.length > 0 && (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardHeader>
-            <CardTitle className="text-blue-800 flex items-center gap-2">
-              <Bell className="h-5 w-5" />
-              Current Classes - Mark Attendance
-            </CardTitle>
-            <CardDescription>You can mark attendance for these ongoing classes</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {currentClasses.map((classEntry) => (
-                <div key={classEntry.id} className="flex items-center justify-between p-3 bg-white rounded-lg border">
-                  <div>
-                    <h4 className="font-medium">{classEntry.subject}</h4>
-                    <p className="text-sm text-gray-600">{classEntry.time_slot}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => markAttendance(classEntry, true)}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      Present
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => markAttendance(classEntry, false)}
-                      className="border-red-300 text-red-600 hover:bg-red-50"
-                    >
-                      Absent
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Self Attendance Marker */}
+      <SelfAttendanceMarker />
 
-      {/* Today's Remaining Classes */}
-      {todaysClasses.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Today's Schedule</CardTitle>
-            <CardDescription>All classes scheduled for today</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {todaysClasses.map((classEntry) => {
-                const today = new Date().toISOString().split('T')[0];
-                const hasMarked = attendanceRecords.some(record => 
-                  record.date === today && record.subject === classEntry.subject
-                );
-                const attendanceStatus = attendanceRecords.find(record => 
-                  record.date === today && record.subject === classEntry.subject
-                );
-
-                return (
-                  <div key={classEntry.id} className="p-3 border rounded-lg">
-                    <h4 className="font-medium">{classEntry.subject}</h4>
-                    <p className="text-sm text-gray-600">{classEntry.time_slot}</p>
-                    {hasMarked ? (
-                      <span className={`inline-block mt-2 px-2 py-1 rounded text-xs ${
-                        attendanceStatus?.is_present 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {attendanceStatus?.is_present ? 'Present' : 'Absent'}
-                      </span>
-                    ) : (
-                      <span className="inline-block mt-2 px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
-                        Not Marked
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
+      {/* Overall Attendance Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Overall Attendance</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
+            <TrendingUp className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${
-              overallAttendance.percentage >= 90 ? 'text-green-600' :
-              overallAttendance.percentage >= 75 ? 'text-yellow-600' : 'text-red-600'
-            }`}>
-              {overallAttendance.percentage}%
-            </div>
+            <div className="text-2xl font-bold">{overallAttendance.percentage.toFixed(1)}%</div>
             <p className="text-xs text-muted-foreground">
-              {overallAttendance.attendedClasses} of {overallAttendance.totalClasses} classes
+              {overallAttendance.attendedClasses}/{overallAttendance.totalClasses} classes
             </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Classes to 75%</CardTitle>
-            <Calendar className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{totalClassesToReach75}</div>
-            <p className="text-xs text-muted-foreground">More classes needed</p>
+            <Progress value={overallAttendance.percentage} className="mt-2" />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Classes Attended</CardTitle>
-            <Calendar className="h-4 w-4 text-green-600" />
+            <CheckCircle className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{overallAttendance.attendedClasses}</div>
-            <p className="text-xs text-muted-foreground">This semester</p>
+            <p className="text-xs text-muted-foreground">Total present</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Classes</CardTitle>
-            <Clock className="h-4 w-4 text-purple-600" />
+            <CalendarDays className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{overallAttendance.totalClasses}</div>
             <p className="text-xs text-muted-foreground">This semester</p>
           </CardContent>
         </Card>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader>
-            <CardTitle>Subject-wise Attendance Analysis</CardTitle>
-            <CardDescription>Detailed breakdown with 75% target analysis</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Status</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            {subjectAttendance.length > 0 ? (
+            <Badge className={getAttendanceStatus(overallAttendance.percentage).color}>
+              {getAttendanceStatus(overallAttendance.percentage).status}
+            </Badge>
+            <p className="text-xs text-muted-foreground mt-2">
+              {overallAttendance.percentage >= 75 ? 'Meeting requirement' : 'Below 75% requirement'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Subject-wise Attendance */}
+      {subjectAttendance.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Subject-wise Attendance</CardTitle>
+            <CardDescription>Detailed breakdown of your attendance in each subject</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2">Subject</th>
+                    <th className="text-center p-2">Attended</th>
+                    <th className="text-center p-2">Total</th>
+                    <th className="text-center p-2">Percentage</th>
+                    <th className="text-center p-2">Status</th>
+                    <th className="text-center p-2">Progress</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {subjectAttendance.map((subject) => {
+                    const status = getAttendanceStatus(subject.percentage);
+                    return (
+                      <tr key={subject.subject} className="border-b hover:bg-gray-50">
+                        <td className="p-2 font-medium">{subject.subject}</td>
+                        <td className="text-center p-2">{subject.attended}</td>
+                        <td className="text-center p-2">{subject.total}</td>
+                        <td className="text-center p-2 font-bold">{subject.percentage.toFixed(1)}%</td>
+                        <td className="text-center p-2">
+                          <Badge className={status.color}>
+                            {status.status}
+                          </Badge>
+                        </td>
+                        <td className="text-center p-2">
+                          <Progress value={subject.percentage} className="w-20" />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Attendance Requirements */}
+      {subjectAttendance.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Attendance Requirements</CardTitle>
+            <CardDescription>Analysis to help you maintain 75% attendance</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
-                {subjectAttendance.map((subject) => (
-                  <div key={subject.subject} className="p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium">{subject.subject}</h4>
-                      <div className={`text-lg font-bold ${
-                        subject.percentage >= 90 ? 'text-green-600' :
-                        subject.percentage >= 75 ? 'text-yellow-600' : 'text-red-600'
-                      }`}>
-                        {subject.percentage}%
+                <h4 className="font-semibold text-green-700">Subjects Above 75%</h4>
+                <div className="space-y-2">
+                  {subjectAttendance
+                    .filter(subject => subject.percentage >= 75)
+                    .map(subject => (
+                      <div key={subject.subject} className="flex justify-between items-center p-2 bg-green-50 rounded">
+                        <span className="font-medium">{subject.subject}</span>
+                        <div className="text-right">
+                          <span className="text-green-700 font-bold">{subject.percentage.toFixed(1)}%</span>
+                          <p className="text-xs text-green-600">
+                            Can miss {subject.maxAbsences} more classes
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-gray-600">Attended: {subject.attended}/{subject.total}</p>
-                        {subject.classesToReach75 > 0 && (
-                          <p className="text-blue-600">Need {subject.classesToReach75} more to reach 75%</p>
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-gray-600">Max absences: {subject.maxAbsences}</p>
-                        {subject.percentage >= 75 && (
-                          <p className="text-green-600">Target achieved! ✓</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-2">
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className={`h-2 rounded-full ${
-                            subject.percentage >= 90 ? 'bg-green-600' :
-                            subject.percentage >= 75 ? 'bg-yellow-600' : 'bg-red-600'
-                          }`}
-                          style={{ width: `${Math.min(subject.percentage, 100)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                    ))
+                  }
+                  {subjectAttendance.filter(subject => subject.percentage >= 75).length === 0 && (
+                    <p className="text-gray-500 italic">No subjects above 75% yet</p>
+                  )}
+                </div>
               </div>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500">No attendance records found</p>
-                <p className="text-sm text-gray-400 mt-2">Your attendance will appear here once classes begin</p>
+              
+              <div className="space-y-4">
+                <h4 className="font-semibold text-red-700">Subjects Below 75%</h4>
+                <div className="space-y-2">
+                  {subjectAttendance
+                    .filter(subject => subject.percentage < 75)
+                    .map(subject => (
+                      <div key={subject.subject} className="flex justify-between items-center p-2 bg-red-50 rounded">
+                        <span className="font-medium">{subject.subject}</span>
+                        <div className="text-right">
+                          <span className="text-red-700 font-bold">{subject.percentage.toFixed(1)}%</span>
+                          <p className="text-xs text-red-600">
+                            Need {subject.classesToReach75} more classes
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  }
+                  {subjectAttendance.filter(subject => subject.percentage < 75).length === 0 && (
+                    <p className="text-gray-500 italic">Great! All subjects above 75%</p>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </CardContent>
         </Card>
+      )}
 
+      {/* No attendance data message */}
+      {attendance.length === 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Recent Attendance</CardTitle>
-            <CardDescription>Your attendance for the last 10 classes</CardDescription>
+            <CardTitle>No Attendance Records</CardTitle>
+            <CardDescription>
+              No attendance has been recorded for this semester yet. You can mark your attendance for today's classes above.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            {attendanceRecords.length > 0 ? (
-              <div className="space-y-3">
-                {attendanceRecords.slice(0, 10).map((record) => (
-                  <div key={record.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">{record.subject}</p>
-                      <p className="text-sm text-gray-600">{new Date(record.date).toLocaleDateString()}</p>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      record.is_present 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {record.is_present ? 'Present' : 'Absent'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500">No recent attendance records</p>
-                <p className="text-sm text-gray-400 mt-2">Your recent attendance will appear here</p>
-              </div>
-            )}
-          </CardContent>
         </Card>
-      </div>
+      )}
 
+      {/* Attendance Chatbot */}
       {showChatbot && (
-        <AttendanceChatbot 
+        <AttendanceChatbot
           studentData={studentData}
           subjectAttendance={subjectAttendance}
           overallAttendance={overallAttendance}
           onClose={() => setShowChatbot(false)}
         />
       )}
+
+      {/* Chatbot trigger button */}
+      <div className="fixed bottom-4 right-4">
+        <button
+          onClick={() => setShowChatbot(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg transition-colors"
+        >
+          <CalendarDays className="h-6 w-6" />
+        </button>
+      </div>
     </div>
   );
 };

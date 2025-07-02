@@ -1,14 +1,76 @@
 
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { useAuth } from '../../context/AuthContext';
-import { User, Mail, Phone, MapPin, GraduationCap, BookOpen, Award } from 'lucide-react';
+import { User, Mail, Phone, MapPin, GraduationCap, BookOpen, Award, Edit } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
+import { useToast } from '../../hooks/use-toast';
 
 export const StudentProfile: React.FC = () => {
   const { profile, studentData, loading } = useAuth();
   const [isCreatingStudent, setIsCreatingStudent] = useState(false);
   const [studentCreateError, setStudentCreateError] = useState<string | null>(null);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [editedProfile, setEditedProfile] = useState({
+    full_name: '',
+    phone: '',
+    address: ''
+  });
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (profile) {
+      setEditedProfile({
+        full_name: profile.full_name || '',
+        phone: profile.phone || '',
+        address: profile.address || ''
+      });
+    }
+  }, [profile]);
+
+  const handleEditProfile = async () => {
+    if (!profile) return;
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          full_name: editedProfile.full_name,
+          phone: editedProfile.phone,
+          address: editedProfile.address,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', profile.id);
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to update profile",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "Profile updated successfully"
+      });
+
+      setShowEditProfile(false);
+      // Reload the page to fetch updated data
+      window.location.reload();
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
+    }
+  };
 
   const createDefaultStudentRecord = async () => {
     if (!profile || profile.user_type !== 'student') return;
@@ -21,7 +83,7 @@ export const StudentProfile: React.FC = () => {
         .from('students')
         .insert({
           profile_id: profile.id,
-          roll_number: `TEMP${Date.now()}`, // Generate a temporary unique roll number
+          roll_number: `TEMP${Date.now()}`,
           branch: 'CSE',
           section: 'A',
           year: 1,
@@ -34,7 +96,6 @@ export const StudentProfile: React.FC = () => {
         console.error('Error creating student record:', error);
         setStudentCreateError('Failed to create student record. Please contact administrator.');
       } else {
-        // Reload the page to fetch the new student data
         window.location.reload();
       }
     } catch (error) {
@@ -106,9 +167,62 @@ export const StudentProfile: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
-        <p className="text-gray-600">Your personal information and academic details</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
+          <p className="text-gray-600">Your personal information and academic details</p>
+        </div>
+        
+        <Dialog open={showEditProfile} onOpenChange={setShowEditProfile}>
+          <DialogTrigger asChild>
+            <Button variant="outline" className="flex items-center gap-2">
+              <Edit className="h-4 w-4" />
+              Edit Profile
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Personal Information</DialogTitle>
+              <DialogDescription>
+                Update your personal details
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Full Name</label>
+                <Input
+                  value={editedProfile.full_name}
+                  onChange={(e) => setEditedProfile({ ...editedProfile, full_name: e.target.value })}
+                  placeholder="Enter your full name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Phone</label>
+                <Input
+                  value={editedProfile.phone}
+                  onChange={(e) => setEditedProfile({ ...editedProfile, phone: e.target.value })}
+                  placeholder="Enter your phone number"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Address</label>
+                <Input
+                  value={editedProfile.address}
+                  onChange={(e) => setEditedProfile({ ...editedProfile, address: e.target.value })}
+                  placeholder="Enter your address"
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setShowEditProfile(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleEditProfile}>
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
