@@ -71,18 +71,24 @@ export const SelfAttendanceMarker: React.FC = () => {
       const { data: studentRecord, error: studentError } = await supabase
         .from('students')
         .select('id')
-        .eq('profile_id', studentData.id)
-        .maybeSingle();
+        .eq('profile_id', studentData.profile_id)
+        .single();
 
-      if (studentError || !studentRecord) {
+      if (studentError) {
         console.error('Error fetching student record:', studentError);
+        setLoading(false);
+        return;
+      }
+
+      if (!studentRecord) {
+        console.log('No student record found');
         setLoading(false);
         return;
       }
 
       const { data, error } = await supabase
         .from('attendance')
-        .select('subject, is_present')
+        .select('subject, is_present, time_slot')
         .eq('student_id', studentRecord.id)
         .eq('date', todayDate);
 
@@ -92,7 +98,17 @@ export const SelfAttendanceMarker: React.FC = () => {
         return;
       }
 
-      setTodaysAttendance(data || []);
+      // Map the data to include time_slot from timetable if missing
+      const attendanceWithTimeSlots = (data || []).map(att => {
+        const timetableEntry = todaysTimetable.find(t => t.subject === att.subject);
+        return {
+          subject: att.subject,
+          is_present: att.is_present,
+          time_slot: att.time_slot || timetableEntry?.time_slot || ''
+        };
+      });
+
+      setTodaysAttendance(attendanceWithTimeSlots);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching attendance:', error);
@@ -107,8 +123,8 @@ export const SelfAttendanceMarker: React.FC = () => {
       const { data: studentRecord, error: studentError } = await supabase
         .from('students')
         .select('id')
-        .eq('profile_id', studentData.id)
-        .maybeSingle();
+        .eq('profile_id', studentData.profile_id)
+        .single();
 
       if (studentError || !studentRecord) {
         toast({
@@ -118,6 +134,10 @@ export const SelfAttendanceMarker: React.FC = () => {
         });
         return;
       }
+
+      // Get the time slot for this subject from timetable
+      const timetableEntry = todaysTimetable.find(t => t.subject === subject);
+      const timeSlot = timetableEntry?.time_slot || '';
 
       const { error } = await supabase
         .from('attendance')
