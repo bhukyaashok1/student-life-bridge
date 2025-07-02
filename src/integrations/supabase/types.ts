@@ -20,6 +20,7 @@ export type Database = {
           semester: number
           student_id: string | null
           subject: string
+          time_slot: string | null
           updated_at: string
           year: number
         }
@@ -33,6 +34,7 @@ export type Database = {
           semester: number
           student_id?: string | null
           subject: string
+          time_slot?: string | null
           updated_at?: string
           year: number
         }
@@ -46,6 +48,7 @@ export type Database = {
           semester?: number
           student_id?: string | null
           subject?: string
+          time_slot?: string | null
           updated_at?: string
           year?: number
         }

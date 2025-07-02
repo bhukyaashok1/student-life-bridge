@@ -57,6 +57,8 @@ export const StudentMarks: React.FC = () => {
     'Web Development', 'Machine Learning', 'Computer Networks'
   ];
 
+  console.log('StudentMarks - studentData:', studentData);
+
   useEffect(() => {
     if (studentData && !authLoading) {
       fetchMarksData();
@@ -70,6 +72,8 @@ export const StudentMarks: React.FC = () => {
     try {
       setLoading(true);
       
+      console.log('Fetching student record for profile_id:', studentData.profile_id);
+
       const { data: studentRecord, error: studentError } = await supabase
         .from('students')
         .select('id')
@@ -89,6 +93,8 @@ export const StudentMarks: React.FC = () => {
         return;
       }
 
+      console.log('Found student record:', studentRecord);
+
       const { data: marksData, error: marksError } = await supabase
         .from('marks')
         .select('*')
@@ -101,6 +107,7 @@ export const StudentMarks: React.FC = () => {
         return;
       }
 
+      console.log('Fetched marks data:', marksData);
       setMarks(marksData || []);
       setError(null);
     } catch (error) {
@@ -115,16 +122,20 @@ export const StudentMarks: React.FC = () => {
     if (!studentData) return;
 
     try {
+      console.log('Fetching CGPA data for profile_id:', studentData.profile_id);
+
       const { data, error } = await supabase
         .from('students')
         .select('sgpa, cgpa')
         .eq('profile_id', studentData.profile_id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error('Error fetching CGPA data:', error);
         return;
       }
+
+      console.log('Fetched CGPA data:', data);
 
       setCgpaData({
         sgpa: data?.sgpa || 0,
@@ -148,6 +159,8 @@ export const StudentMarks: React.FC = () => {
     }
 
     try {
+      console.log('Adding marks for:', formData);
+
       const { data: studentRecord, error: studentError } = await supabase
         .from('students')
         .select('id')
@@ -155,6 +168,7 @@ export const StudentMarks: React.FC = () => {
         .single();
 
       if (studentError || !studentRecord) {
+        console.error('Student error or no record:', studentError);
         toast({
           title: "Error",
           description: "Student record not found",
@@ -163,7 +177,7 @@ export const StudentMarks: React.FC = () => {
         return;
       }
 
-      const total = formData.mid1 + formData.mid2 + formData.assignment;
+      console.log('Inserting marks for student:', studentRecord.id);
 
       const { error } = await supabase
         .from('marks')
@@ -176,16 +190,16 @@ export const StudentMarks: React.FC = () => {
           section: studentData.section,
           mid1: formData.mid1,
           mid2: formData.mid2,
-          assignment: formData.assignment,
-          total: total
+          assignment: formData.assignment
         }, {
           onConflict: 'student_id,subject,semester'
         });
 
       if (error) {
+        console.error('Error saving marks:', error);
         toast({
           title: "Error",
-          description: "Failed to save marks",
+          description: "Failed to save marks: " + error.message,
           variant: "destructive"
         });
         return;
@@ -236,7 +250,7 @@ export const StudentMarks: React.FC = () => {
   const chartData = marks.map(mark => ({
     subject: mark.subject,
     total: mark.total,
-    percentage: ((mark.total / 300) * 100).toFixed(1)
+    percentage: ((mark.total / 60) * 100).toFixed(1) // Total out of 60 (25+25+10)
   }));
 
   const chartConfig = {
@@ -299,7 +313,7 @@ export const StudentMarks: React.FC = () => {
             <DialogHeader>
               <DialogTitle>Add New Marks</DialogTitle>
               <DialogDescription>
-                Enter your marks for a subject. Maximum marks: Mid1 (100), Mid2 (100), Assignment (100)
+                Enter your marks for a subject. Maximum marks: Mid1 (25), Mid2 (25), Assignment (10)
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -318,34 +332,34 @@ export const StudentMarks: React.FC = () => {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="mid1">Mid-1 (100)</Label>
+                  <Label htmlFor="mid1">Mid-1 (25)</Label>
                   <Input
                     id="mid1"
                     type="number"
                     min="0"
-                    max="100"
+                    max="25"
                     value={formData.mid1}
                     onChange={(e) => setFormData({...formData, mid1: parseInt(e.target.value) || 0})}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="mid2">Mid-2 (100)</Label>
+                  <Label htmlFor="mid2">Mid-2 (25)</Label>
                   <Input
                     id="mid2"
                     type="number"
                     min="0"
-                    max="100"
+                    max="25"
                     value={formData.mid2}
                     onChange={(e) => setFormData({...formData, mid2: parseInt(e.target.value) || 0})}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="assignment">Assignment (100)</Label>
+                  <Label htmlFor="assignment">Assignment (10)</Label>
                   <Input
                     id="assignment"
                     type="number"
                     min="0"
-                    max="100"
+                    max="10"
                     value={formData.assignment}
                     onChange={(e) => setFormData({...formData, assignment: parseInt(e.target.value) || 0})}
                   />
@@ -432,7 +446,7 @@ export const StudentMarks: React.FC = () => {
         <Card>
           <CardHeader>
             <CardTitle>Subject-wise Performance</CardTitle>
-            <CardDescription>Detailed breakdown of your marks</CardDescription>
+            <CardDescription>Detailed breakdown of your marks (Total out of 60)</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -440,10 +454,10 @@ export const StudentMarks: React.FC = () => {
                 <thead>
                   <tr className="border-b">
                     <th className="text-left p-2">Subject</th>
-                    <th className="text-center p-2">Mid-1</th>
-                    <th className="text-center p-2">Mid-2</th>
-                    <th className="text-center p-2">Assignment</th>
-                    <th className="text-center p-2">Total</th>
+                    <th className="text-center p-2">Mid-1 (25)</th>
+                    <th className="text-center p-2">Mid-2 (25)</th>
+                    <th className="text-center p-2">Assignment (10)</th>
+                    <th className="text-center p-2">Total (60)</th>
                     <th className="text-center p-2">Percentage</th>
                     <th className="text-center p-2">Grade</th>
                     <th className="text-center p-2">Progress</th>
@@ -451,7 +465,7 @@ export const StudentMarks: React.FC = () => {
                 </thead>
                 <tbody>
                   {marks.map((mark) => {
-                    const percentage = (mark.total / 300) * 100;
+                    const percentage = (mark.total / 60) * 100; // Total out of 60
                     const grade = calculateGrade(percentage);
                     return (
                       <tr key={mark.id} className="border-b hover:bg-gray-50">

@@ -32,6 +32,10 @@ export const SelfAttendanceMarker: React.FC = () => {
   const currentTime = new Date();
   const todayDate = new Date().toISOString().split('T')[0];
 
+  console.log('SelfAttendanceMarker - studentData:', studentData);
+  console.log('SelfAttendanceMarker - today:', today);
+  console.log('SelfAttendanceMarker - todayDate:', todayDate);
+
   useEffect(() => {
     if (studentData) {
       fetchTodaysTimetable();
@@ -43,6 +47,14 @@ export const SelfAttendanceMarker: React.FC = () => {
     if (!studentData) return;
 
     try {
+      console.log('Fetching timetable for:', {
+        branch: studentData.branch,
+        year: studentData.year,
+        semester: studentData.semester,
+        section: studentData.section,
+        day: today
+      });
+
       const { data, error } = await supabase
         .from('timetables')
         .select('*')
@@ -58,6 +70,7 @@ export const SelfAttendanceMarker: React.FC = () => {
         return;
       }
 
+      console.log('Fetched timetable data:', data);
       setTodaysTimetable(data || []);
     } catch (error) {
       console.error('Error fetching timetable:', error);
@@ -68,6 +81,8 @@ export const SelfAttendanceMarker: React.FC = () => {
     if (!studentData) return;
 
     try {
+      console.log('Fetching student record for profile_id:', studentData.profile_id);
+
       const { data: studentRecord, error: studentError } = await supabase
         .from('students')
         .select('id')
@@ -86,6 +101,8 @@ export const SelfAttendanceMarker: React.FC = () => {
         return;
       }
 
+      console.log('Found student record:', studentRecord);
+
       const { data, error } = await supabase
         .from('attendance')
         .select('subject, is_present, time_slot')
@@ -97,6 +114,8 @@ export const SelfAttendanceMarker: React.FC = () => {
         setLoading(false);
         return;
       }
+
+      console.log('Fetched attendance data:', data);
 
       // Map the data to include time_slot from timetable if missing
       const attendanceWithTimeSlots = (data || []).map(att => {
@@ -120,6 +139,8 @@ export const SelfAttendanceMarker: React.FC = () => {
     if (!studentData) return;
 
     try {
+      console.log('Marking attendance for:', { subject, isPresent });
+
       const { data: studentRecord, error: studentError } = await supabase
         .from('students')
         .select('id')
@@ -127,6 +148,7 @@ export const SelfAttendanceMarker: React.FC = () => {
         .single();
 
       if (studentError || !studentRecord) {
+        console.error('Student error or no record:', studentError);
         toast({
           title: "Error",
           description: "Student record not found",
@@ -139,12 +161,25 @@ export const SelfAttendanceMarker: React.FC = () => {
       const timetableEntry = todaysTimetable.find(t => t.subject === subject);
       const timeSlot = timetableEntry?.time_slot || '';
 
+      console.log('Inserting attendance:', {
+        student_id: studentRecord.id,
+        date: todayDate,
+        subject: subject,
+        time_slot: timeSlot,
+        branch: studentData.branch,
+        year: studentData.year,
+        semester: studentData.semester,
+        section: studentData.section,
+        is_present: isPresent
+      });
+
       const { error } = await supabase
         .from('attendance')
         .upsert({
           student_id: studentRecord.id,
           date: todayDate,
           subject: subject,
+          time_slot: timeSlot,
           branch: studentData.branch,
           year: studentData.year,
           semester: studentData.semester,
@@ -155,6 +190,7 @@ export const SelfAttendanceMarker: React.FC = () => {
         });
 
       if (error) {
+        console.error('Error marking attendance:', error);
         toast({
           title: "Error",
           description: "Failed to mark attendance",
