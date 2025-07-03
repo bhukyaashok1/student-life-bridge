@@ -43,12 +43,16 @@ export const StudentMarks: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isCgpaDialogOpen, setIsCgpaDialogOpen] = useState(false);
+  const [editingMark, setEditingMark] = useState<MarksRecord | null>(null);
   const [formData, setFormData] = useState<MarksFormData>({
     subject: '',
     mid1: 0,
     mid2: 0,
     assignment: 0
   });
+  const [cgpaFormData, setCgpaFormData] = useState<CGPAData>({ sgpa: 0, cgpa: 0 });
   const { toast } = useToast();
 
   const subjects = [
@@ -146,6 +150,63 @@ export const StudentMarks: React.FC = () => {
     }
   };
 
+  const handleEdit = (mark: MarksRecord) => {
+    setEditingMark(mark);
+    setFormData({
+      subject: mark.subject,
+      mid1: mark.mid1,
+      mid2: mark.mid2,
+      assignment: mark.assignment
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleCgpaEdit = () => {
+    setCgpaFormData(cgpaData);
+    setIsCgpaDialogOpen(true);
+  };
+
+  const handleCgpaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!studentData) return;
+
+    try {
+      const { error } = await supabase
+        .from('students')
+        .update({
+          sgpa: cgpaFormData.sgpa,
+          cgpa: cgpaFormData.cgpa
+        })
+        .eq('profile_id', studentData.profile_id);
+
+      if (error) {
+        console.error('Error updating CGPA:', error);
+        toast({
+          title: "Error",
+          description: "Failed to update CGPA",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "CGPA updated successfully",
+      });
+
+      setIsCgpaDialogOpen(false);
+      fetchCGPAData();
+    } catch (error) {
+      console.error('Error updating CGPA:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -207,10 +268,12 @@ export const StudentMarks: React.FC = () => {
 
       toast({
         title: "Success",
-        description: "Marks added successfully",
+        description: editingMark ? "Marks updated successfully" : "Marks added successfully",
       });
 
       setIsAddDialogOpen(false);
+      setIsEditDialogOpen(false);
+      setEditingMark(null);
       setFormData({ subject: '', mid1: 0, mid2: 0, assignment: 0 });
       fetchMarksData();
     } catch (error) {
@@ -374,6 +437,116 @@ export const StudentMarks: React.FC = () => {
             </form>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Marks Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Marks</DialogTitle>
+              <DialogDescription>
+                Update marks for {editingMark?.subject}. Maximum marks: Mid1 (25), Mid2 (25), Assignment (10)
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-subject">Subject</Label>
+                <Input
+                  id="edit-subject"
+                  value={formData.subject}
+                  disabled
+                  className="bg-gray-50"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-mid1">Mid-1 (25)</Label>
+                  <Input
+                    id="edit-mid1"
+                    type="number"
+                    min="0"
+                    max="25"
+                    value={formData.mid1}
+                    onChange={(e) => setFormData({...formData, mid1: parseInt(e.target.value) || 0})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-mid2">Mid-2 (25)</Label>
+                  <Input
+                    id="edit-mid2"
+                    type="number"
+                    min="0"
+                    max="25"
+                    value={formData.mid2}
+                    onChange={(e) => setFormData({...formData, mid2: parseInt(e.target.value) || 0})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-assignment">Assignment (10)</Label>
+                  <Input
+                    id="edit-assignment"
+                    type="number"
+                    min="0"
+                    max="10"
+                    value={formData.assignment}
+                    onChange={(e) => setFormData({...formData, assignment: parseInt(e.target.value) || 0})}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Update Marks</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* CGPA Edit Dialog */}
+        <Dialog open={isCgpaDialogOpen} onOpenChange={setIsCgpaDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Update CGPA</DialogTitle>
+              <DialogDescription>
+                Enter your current semester SGPA and cumulative CGPA
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleCgpaSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sgpa">SGPA</Label>
+                  <Input
+                    id="sgpa"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="10"
+                    value={cgpaFormData.sgpa}
+                    onChange={(e) => setCgpaFormData({...cgpaFormData, sgpa: parseFloat(e.target.value) || 0})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cgpa">CGPA</Label>
+                  <Input
+                    id="cgpa"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="10"
+                    value={cgpaFormData.cgpa}
+                    onChange={(e) => setCgpaFormData({...cgpaFormData, cgpa: parseFloat(e.target.value) || 0})}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button type="button" variant="outline" onClick={() => setIsCgpaDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Update CGPA</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* CGPA Overview */}
@@ -381,7 +554,12 @@ export const StudentMarks: React.FC = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">CGPA</CardTitle>
-            <TrendingUp className="h-4 w-4 text-blue-600" />
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-blue-600" />
+              <Button size="sm" variant="ghost" onClick={handleCgpaEdit}>
+                <Edit2 className="h-3 w-3" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{cgpaData.cgpa.toFixed(2)}</div>
@@ -420,23 +598,29 @@ export const StudentMarks: React.FC = () => {
             <CardDescription>Your marks across all subjects</CardDescription>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig}>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="subject" 
-                    tick={{ fontSize: 12 }}
-                    angle={-45}
-                    textAnchor="end"
-                    height={100}
-                  />
-                  <YAxis />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="total" fill="var(--color-total)" />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
+             <ChartContainer config={chartConfig}>
+               <ResponsiveContainer width="100%" height={300}>
+                 <LineChart data={chartData}>
+                   <CartesianGrid strokeDasharray="3 3" />
+                   <XAxis 
+                     dataKey="subject" 
+                     tick={{ fontSize: 12 }}
+                     angle={-45}
+                     textAnchor="end"
+                     height={100}
+                   />
+                   <YAxis />
+                   <ChartTooltip content={<ChartTooltipContent />} />
+                   <Line 
+                     type="monotone" 
+                     dataKey="total" 
+                     stroke="var(--color-total)" 
+                     strokeWidth={2}
+                     dot={{ fill: "var(--color-total)" }}
+                   />
+                 </LineChart>
+               </ResponsiveContainer>
+             </ChartContainer>
           </CardContent>
         </Card>
       )}
@@ -461,6 +645,7 @@ export const StudentMarks: React.FC = () => {
                     <th className="text-center p-2">Percentage</th>
                     <th className="text-center p-2">Grade</th>
                     <th className="text-center p-2">Progress</th>
+                    <th className="text-center p-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -482,6 +667,11 @@ export const StudentMarks: React.FC = () => {
                         </td>
                         <td className="text-center p-2">
                           <Progress value={percentage} className="w-20" />
+                        </td>
+                        <td className="text-center p-2">
+                          <Button size="sm" variant="ghost" onClick={() => handleEdit(mark)}>
+                            <Edit2 className="h-3 w-3" />
+                          </Button>
                         </td>
                       </tr>
                     );

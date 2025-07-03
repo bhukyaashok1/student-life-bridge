@@ -107,7 +107,7 @@ export const StudentTimetable: React.FC = () => {
       const { data: studentRecord, error: studentError } = await supabase
         .from('students')
         .select('id')
-        .eq('profile_id', studentData.id)
+        .eq('profile_id', studentData.profile_id)
         .single();
 
       if (studentError || !studentRecord) {

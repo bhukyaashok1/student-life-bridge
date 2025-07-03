@@ -33,6 +33,7 @@ export const StudentAttendance: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showChatbot, setShowChatbot] = useState(false);
+  const [targetAttendance, setTargetAttendance] = useState(75);
 
   useEffect(() => {
     if (studentData && !authLoading) {
@@ -179,7 +180,21 @@ export const StudentAttendance: React.FC = () => {
       <AttendanceCalculator 
         subjectAttendance={subjectAttendance}
         overallAttendance={overallAttendance}
+        targetPercentage={targetAttendance}
+        onTargetChange={setTargetAttendance}
       />
+
+      {/* Attendance Chatbot */}
+      {showChatbot && (
+        <div className="mb-6">
+          <AttendanceChatbot
+            studentData={studentData}
+            subjectAttendance={subjectAttendance}
+            overallAttendance={overallAttendance}
+            onClose={() => setShowChatbot(false)}
+          />
+        </div>
+      )}
 
       {/* Overall Attendance Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -229,7 +244,7 @@ export const StudentAttendance: React.FC = () => {
               {getAttendanceStatus(overallAttendance.percentage).status}
             </Badge>
             <p className="text-xs text-muted-foreground mt-2">
-              {overallAttendance.percentage >= 75 ? 'Meeting requirement' : 'Below 75% requirement'}
+              {overallAttendance.percentage >= targetAttendance ? 'Meeting requirement' : `Below ${targetAttendance}% requirement`}
             </p>
           </CardContent>
         </Card>
@@ -292,10 +307,10 @@ export const StudentAttendance: React.FC = () => {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
-                <h4 className="font-semibold text-green-700">Subjects Above 75%</h4>
+                <h4 className="font-semibold text-green-700">Subjects Above {targetAttendance}%</h4>
                 <div className="space-y-2">
                   {subjectAttendance
-                    .filter(subject => subject.percentage >= 75)
+                    .filter(subject => subject.percentage >= targetAttendance)
                     .map(subject => (
                       <div key={subject.subject} className="flex justify-between items-center p-2 bg-green-50 rounded">
                         <span className="font-medium">{subject.subject}</span>
@@ -308,17 +323,17 @@ export const StudentAttendance: React.FC = () => {
                       </div>
                     ))
                   }
-                  {subjectAttendance.filter(subject => subject.percentage >= 75).length === 0 && (
-                    <p className="text-gray-500 italic">No subjects above 75% yet</p>
+                  {subjectAttendance.filter(subject => subject.percentage >= targetAttendance).length === 0 && (
+                    <p className="text-gray-500 italic">No subjects above {targetAttendance}% yet</p>
                   )}
                 </div>
               </div>
               
               <div className="space-y-4">
-                <h4 className="font-semibold text-red-700">Subjects Below 75%</h4>
+                <h4 className="font-semibold text-red-700">Subjects Below {targetAttendance}%</h4>
                 <div className="space-y-2">
                   {subjectAttendance
-                    .filter(subject => subject.percentage < 75)
+                    .filter(subject => subject.percentage < targetAttendance)
                     .map(subject => (
                       <div key={subject.subject} className="flex justify-between items-center p-2 bg-red-50 rounded">
                         <span className="font-medium">{subject.subject}</span>
@@ -331,8 +346,8 @@ export const StudentAttendance: React.FC = () => {
                       </div>
                     ))
                   }
-                  {subjectAttendance.filter(subject => subject.percentage < 75).length === 0 && (
-                    <p className="text-gray-500 italic">Great! All subjects above 75%</p>
+                  {subjectAttendance.filter(subject => subject.percentage < targetAttendance).length === 0 && (
+                    <p className="text-gray-500 italic">Great! All subjects above {targetAttendance}%</p>
                   )}
                 </div>
               </div>
@@ -353,25 +368,17 @@ export const StudentAttendance: React.FC = () => {
         </Card>
       )}
 
-      {/* Attendance Chatbot */}
-      {showChatbot && (
-        <AttendanceChatbot
-          studentData={studentData}
-          subjectAttendance={subjectAttendance}
-          overallAttendance={overallAttendance}
-          onClose={() => setShowChatbot(false)}
-        />
-      )}
-
       {/* Chatbot trigger button */}
-      <div className="fixed bottom-4 right-4">
-        <button
-          onClick={() => setShowChatbot(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg transition-colors"
-        >
-          <CalendarDays className="h-6 w-6" />
-        </button>
-      </div>
+      {!showChatbot && (
+        <div className="fixed bottom-4 right-4">
+          <button
+            onClick={() => setShowChatbot(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg transition-colors"
+          >
+            <CalendarDays className="h-6 w-6" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

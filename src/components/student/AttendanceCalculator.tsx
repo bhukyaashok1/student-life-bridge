@@ -16,31 +16,37 @@ interface AttendanceCalculatorProps {
     attendedClasses: number;
     totalClasses: number;
   };
+  targetPercentage?: number;
+  onTargetChange?: (target: number) => void;
 }
 
 export const AttendanceCalculator: React.FC<AttendanceCalculatorProps> = ({
   subjectAttendance,
-  overallAttendance
+  overallAttendance,
+  targetPercentage = 75,
+  onTargetChange
 }) => {
   const calculateClassesNeeded = (attended: number, total: number): number => {
-    // To reach 75%: (attended + x) / (total + x) = 0.75
-    // Solving: attended + x = 0.75 * (total + x)
-    // attended + x = 0.75 * total + 0.75 * x
-    // attended - 0.75 * total = 0.75 * x - x
-    // attended - 0.75 * total = -0.25 * x
-    // x = (0.75 * total - attended) / 0.25
-    const needed = Math.ceil((0.75 * total - attended) / 0.25);
+    const target = targetPercentage / 100;
+    // To reach target%: (attended + x) / (total + x) = target
+    // Solving: attended + x = target * (total + x)
+    // attended + x = target * total + target * x
+    // attended - target * total = target * x - x
+    // attended - target * total = -(1 - target) * x
+    // x = (target * total - attended) / (1 - target)
+    const needed = Math.ceil((target * total - attended) / (1 - target));
     return Math.max(0, needed);
   };
 
   const calculateMaxAbsences = (attended: number, total: number): number => {
-    // How many classes can be missed while maintaining 75%?
-    // attended / (total + x) >= 0.75
-    // attended >= 0.75 * (total + x)
-    // attended >= 0.75 * total + 0.75 * x
-    // attended - 0.75 * total >= 0.75 * x
-    // x <= (attended - 0.75 * total) / 0.75
-    const maxMiss = Math.floor((attended - 0.75 * total) / 0.75);
+    const target = targetPercentage / 100;
+    // How many classes can be missed while maintaining target%?
+    // attended / (total + x) >= target
+    // attended >= target * (total + x)
+    // attended >= target * total + target * x
+    // attended - target * total >= target * x
+    // x <= (attended - target * total) / target
+    const maxMiss = Math.floor((attended - target * total) / target);
     return Math.max(0, maxMiss);
   };
 
@@ -62,17 +68,33 @@ export const AttendanceCalculator: React.FC<AttendanceCalculatorProps> = ({
           Attendance Calculator
         </CardTitle>
         <CardDescription>
-          Calculate how many classes you need to attend to reach 75% attendance
+          Calculate how many classes you need to attend to reach your target attendance
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
           {/* Overall Attendance Calculator */}
           <div className="p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50">
-            <h4 className="font-semibold text-lg mb-3 flex items-center gap-2">
-              <Target className="h-4 w-4" />
-              Overall Attendance Goal
-            </h4>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-lg flex items-center gap-2">
+                <Target className="h-4 w-4" />
+                Overall Attendance Goal
+              </h4>
+              {onTargetChange && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">Target:</span>
+                  <input
+                    type="number"
+                    min="50"
+                    max="100"
+                    value={targetPercentage}
+                    onChange={(e) => onTargetChange(parseInt(e.target.value) || 75)}
+                    className="w-16 px-2 py-1 text-sm border rounded"
+                  />
+                  <span className="text-sm">%</span>
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600">
@@ -81,12 +103,12 @@ export const AttendanceCalculator: React.FC<AttendanceCalculatorProps> = ({
                 <p className="text-sm text-gray-600">Current</p>
               </div>
               
-              {overallAttendance.percentage < 75 ? (
+              {overallAttendance.percentage < targetPercentage ? (
                 <div className="text-center">
                   <div className="text-2xl font-bold text-orange-600">
                     {overallClassesNeeded}
                   </div>
-                  <p className="text-sm text-gray-600">Classes needed to reach 75%</p>
+                  <p className="text-sm text-gray-600">Classes needed to reach {targetPercentage}%</p>
                 </div>
               ) : (
                 <div className="text-center">
@@ -98,7 +120,7 @@ export const AttendanceCalculator: React.FC<AttendanceCalculatorProps> = ({
               )}
               
               <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">75%</div>
+                <div className="text-2xl font-bold text-purple-600">{targetPercentage}%</div>
                 <p className="text-sm text-gray-600">Target</p>
               </div>
             </div>
@@ -117,14 +139,14 @@ export const AttendanceCalculator: React.FC<AttendanceCalculatorProps> = ({
                     <div
                       key={subject.subject}
                       className={`p-3 border rounded-lg ${
-                        subject.percentage >= 75 
+                        subject.percentage >= targetPercentage 
                           ? 'border-green-200 bg-green-50' 
                           : 'border-red-200 bg-red-50'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          {subject.percentage >= 75 ? (
+                          {subject.percentage >= targetPercentage ? (
                             <CheckCircle className="h-4 w-4 text-green-600" />
                           ) : (
                             <AlertTriangle className="h-4 w-4 text-red-600" />
@@ -142,7 +164,7 @@ export const AttendanceCalculator: React.FC<AttendanceCalculatorProps> = ({
                       </div>
                       
                       <div className="mt-2 text-sm">
-                        {subject.percentage < 75 ? (
+                        {subject.percentage < targetPercentage ? (
                           <div className="flex items-center gap-1 text-red-700">
                             <span>Need to attend</span>
                             <span className="font-bold">{classesNeeded}</span>
