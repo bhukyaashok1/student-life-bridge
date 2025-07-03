@@ -87,7 +87,7 @@ export const SelfAttendanceMarker: React.FC = () => {
         .from('students')
         .select('id')
         .eq('profile_id', studentData.profile_id)
-        .single();
+        .maybeSingle();
 
       if (studentError) {
         console.error('Error fetching student record:', studentError);

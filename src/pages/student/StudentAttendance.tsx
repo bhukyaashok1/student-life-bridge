@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../integrations/supabase/client';
 import { AttendanceChatbot } from '../../components/student/AttendanceChatbot';
 import { SelfAttendanceMarker } from '../../components/student/SelfAttendanceMarker';
+import { AttendanceCalculator } from '../../components/student/AttendanceCalculator';
 
 interface AttendanceRecord {
   id: string;
@@ -48,7 +49,7 @@ export const StudentAttendance: React.FC = () => {
       const { data: studentRecord, error: studentError } = await supabase
         .from('students')
         .select('id')
-        .eq('profile_id', studentData.id)
+        .eq('profile_id', studentData.profile_id)
         .maybeSingle();
 
       if (studentError) {
@@ -173,6 +174,12 @@ export const StudentAttendance: React.FC = () => {
 
       {/* Self Attendance Marker */}
       <SelfAttendanceMarker />
+
+      {/* Attendance Calculator */}
+      <AttendanceCalculator 
+        subjectAttendance={subjectAttendance}
+        overallAttendance={overallAttendance}
+      />
 
       {/* Overall Attendance Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
