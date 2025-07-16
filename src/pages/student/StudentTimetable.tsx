@@ -6,7 +6,7 @@ import { Clock, Calendar, TrendingUp, BookOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../integrations/supabase/client';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '../../components/ui/chart';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
 interface TimetableEntry {
   id: string;
@@ -189,6 +189,8 @@ export const StudentTimetable: React.FC = () => {
     },
   };
 
+  const pieChartColors = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
+
   if (authLoading || loading) {
     return (
       <div className="space-y-6">
@@ -231,7 +233,7 @@ export const StudentTimetable: React.FC = () => {
   const nextClass = getNextClass();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 max-w-full overflow-hidden">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Timetable</h1>
@@ -250,7 +252,7 @@ export const StudentTimetable: React.FC = () => {
         </Select>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Today's Classes</CardTitle>
@@ -291,67 +293,49 @@ export const StudentTimetable: React.FC = () => {
         </Card>
       </div>
 
-      {/* Attendance Analysis Charts */}
+      {/* Attendance Analysis Chart */}
       {attendanceData.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Subject-wise Attendance</CardTitle>
-              <CardDescription>Your attendance percentage by subject</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={chartConfig}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={attendanceData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="subject" 
-                      tick={{ fontSize: 12 }}
-                      angle={-45}
-                      textAnchor="end"
-                      height={100}
-                    />
-                    <YAxis />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="percentage" fill="var(--color-percentage)" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Attendance Trend</CardTitle>
-              <CardDescription>Track your progress over time</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={chartConfig}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={attendanceData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="subject" 
-                      tick={{ fontSize: 12 }}
-                      angle={-45}
-                      textAnchor="end"
-                      height={100}
-                    />
-                    <YAxis />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Line 
-                      type="monotone" 
-                      dataKey="percentage" 
-                      stroke="var(--color-percentage)" 
-                      strokeWidth={2}
-                      dot={{ fill: "var(--color-percentage)" }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-        </div>
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Subject-wise Attendance Distribution</CardTitle>
+            <CardDescription>Your attendance percentage across all subjects</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={chartConfig}>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={attendanceData}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    dataKey="percentage"
+                    label={({ subject, percentage }) => `${subject}: ${percentage}%`}
+                  >
+                    {attendanceData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={pieChartColors[index % pieChartColors.length]} />
+                    ))}
+                  </Pie>
+                  <ChartTooltip 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-background p-2 border rounded shadow">
+                            <p className="font-medium">{data.subject}</p>
+                            <p className="text-sm">{`Attendance: ${data.percentage}%`}</p>
+                            <p className="text-sm">{`Classes: ${data.attended}/${data.total}`}</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </CardContent>
+        </Card>
       )}
 
       {/* Dynamic Timetable with Fixed Time Slots */}
@@ -362,31 +346,31 @@ export const StudentTimetable: React.FC = () => {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <div className="min-w-full">
-              <div className="grid grid-cols-7 gap-2 mb-4">
-                <div className="font-semibold text-center p-2 bg-gray-50 rounded">Time</div>
+            <div className="min-w-[800px]">
+              <div className="grid grid-cols-7 gap-1 mb-2">
+                <div className="font-semibold text-center p-1 bg-gray-50 rounded text-xs">Time</div>
                 {days.map(day => (
-                  <div key={day} className="font-semibold text-center p-2 bg-gray-50 rounded">
-                    {day}
+                  <div key={day} className="font-semibold text-center p-1 bg-gray-50 rounded text-xs">
+                    {day.substring(0, 3)}
                   </div>
                 ))}
               </div>
               
               {timeSlots.map(timeSlot => (
-                <div key={timeSlot} className="grid grid-cols-7 gap-2 mb-2">
-                  <div className={`text-sm font-medium p-2 rounded text-center ${
+                <div key={timeSlot} className="grid grid-cols-7 gap-1 mb-1">
+                  <div className={`text-xs font-medium p-1 rounded text-center ${
                     isLunchSlot(timeSlot)
                       ? 'bg-orange-100 text-orange-800' 
                       : 'bg-gray-100'
                   }`}>
-                    {isLunchSlot(timeSlot) ? `${timeSlot} (Lunch)` : timeSlot}
+                    {isLunchSlot(timeSlot) ? 'Lunch' : timeSlot.split('-')[0]}
                   </div>
                   {isLunchSlot(timeSlot) ? (
                     // Lunch break row
                     days.map(day => (
-                      <div key={`${day}-${timeSlot}`} className="min-h-[50px]">
-                        <div className="p-2 rounded border bg-orange-50 text-center text-sm text-orange-700 border-orange-200">
-                          Lunch Break
+                      <div key={`${day}-${timeSlot}`} className="min-h-[40px]">
+                        <div className="p-1 rounded border bg-orange-50 text-center text-xs text-orange-700 border-orange-200">
+                          Lunch
                         </div>
                       </div>
                     ))
@@ -397,13 +381,13 @@ export const StudentTimetable: React.FC = () => {
                       const classItem = daySchedule.find(item => item.time_slot === timeSlot);
                       
                       return (
-                        <div key={`${day}-${timeSlot}`} className="min-h-[50px]">
+                        <div key={`${day}-${timeSlot}`} className="min-h-[40px]">
                           {classItem ? (
-                            <div className={`p-2 rounded border text-xs font-medium text-center ${getSubjectColor(classItem.subject)}`}>
-                              {classItem.subject}
+                            <div className={`p-1 rounded border text-xs font-medium text-center ${getSubjectColor(classItem.subject)}`}>
+                              {classItem.subject.length > 8 ? classItem.subject.substring(0, 8) + '...' : classItem.subject}
                             </div>
                           ) : (
-                            <div className="p-2 border border-gray-200 rounded bg-gray-50 text-center text-xs text-gray-400">
+                            <div className="p-1 border border-gray-200 rounded bg-gray-50 text-center text-xs text-gray-400">
                               Free
                             </div>
                           )}
@@ -426,7 +410,7 @@ export const StudentTimetable: React.FC = () => {
             <CardDescription>Subject-wise class distribution</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {Array.from(new Set(
                 Object.values(timetableData).flat().map(item => item.subject)
               )).map(subject => {

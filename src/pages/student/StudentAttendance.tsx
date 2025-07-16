@@ -165,7 +165,7 @@ export const StudentAttendance: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 max-w-full overflow-hidden">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Attendance</h1>
         <p className="text-gray-600">
@@ -197,7 +197,7 @@ export const StudentAttendance: React.FC = () => {
       )}
 
       {/* Overall Attendance Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Overall Attendance</CardTitle>
@@ -258,40 +258,29 @@ export const StudentAttendance: React.FC = () => {
             <CardDescription>Detailed breakdown of your attendance in each subject</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2">Subject</th>
-                    <th className="text-center p-2">Attended</th>
-                    <th className="text-center p-2">Total</th>
-                    <th className="text-center p-2">Percentage</th>
-                    <th className="text-center p-2">Status</th>
-                    <th className="text-center p-2">Progress</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {subjectAttendance.map((subject) => {
-                    const status = getAttendanceStatus(subject.percentage);
-                    return (
-                      <tr key={subject.subject} className="border-b hover:bg-gray-50">
-                        <td className="p-2 font-medium">{subject.subject}</td>
-                        <td className="text-center p-2">{subject.attended}</td>
-                        <td className="text-center p-2">{subject.total}</td>
-                        <td className="text-center p-2 font-bold">{subject.percentage.toFixed(1)}%</td>
-                        <td className="text-center p-2">
-                          <Badge className={status.color}>
-                            {status.status}
-                          </Badge>
-                        </td>
-                        <td className="text-center p-2">
-                          <Progress value={subject.percentage} className="w-20" />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {subjectAttendance.map((subject) => {
+                const status = getAttendanceStatus(subject.percentage);
+                return (
+                  <Card key={subject.subject} className="border hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">{subject.subject}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold">{subject.percentage.toFixed(1)}%</div>
+                        <div className="text-sm text-muted-foreground">
+                          {subject.attended}/{subject.total} classes
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <Badge className={status.color}>{status.status}</Badge>
+                        <Progress value={subject.percentage} className="w-16" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -305,7 +294,7 @@ export const StudentAttendance: React.FC = () => {
             <CardDescription>Analysis to help you maintain 75% attendance</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <h4 className="font-semibold text-green-700">Subjects Above {targetAttendance}%</h4>
                 <div className="space-y-2">

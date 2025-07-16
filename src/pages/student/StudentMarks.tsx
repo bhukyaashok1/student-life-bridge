@@ -13,7 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../integrations/supabase/client';
 import { useToast } from '../../hooks/use-toast';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '../../components/ui/chart';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 interface MarksRecord {
   id: string;
@@ -313,8 +313,10 @@ export const StudentMarks: React.FC = () => {
   const chartData = marks.map(mark => ({
     subject: mark.subject,
     total: mark.total,
-    percentage: ((mark.total / 60) * 100).toFixed(1) // Total out of 60 (25+25+10)
+    percentage: parseFloat(((mark.total / 60) * 100).toFixed(1)) // Total out of 60 (25+25+10)
   }));
+
+  const pieChartColors = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
   const chartConfig = {
     total: {
@@ -322,6 +324,12 @@ export const StudentMarks: React.FC = () => {
       color: "hsl(var(--chart-1))",
     },
   };
+
+  // CGPA/SGPA comparison data
+  const cgpaComparisonData = [
+    { name: 'SGPA', value: cgpaData.sgpa, color: '#0088FE' },
+    { name: 'CGPA', value: cgpaData.cgpa, color: '#00C49F' }
+  ];
 
   if (authLoading || loading) {
     return (
@@ -357,7 +365,7 @@ export const StudentMarks: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 max-w-full overflow-hidden">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Academic Performance</h1>
@@ -590,40 +598,80 @@ export const StudentMarks: React.FC = () => {
         </Card>
       </div>
 
-      {/* Marks Chart */}
-      {marks.length > 0 && (
+      {/* Performance Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Marks Pie Chart */}
+        {marks.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Performance Overview</CardTitle>
+              <CardDescription>Distribution of marks across subjects</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={chartConfig}>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={chartData}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      dataKey="total"
+                      label={({ subject, total }) => `${subject}: ${total}`}
+                    >
+                      {chartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={pieChartColors[index % pieChartColors.length]} />
+                      ))}
+                    </Pie>
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* CGPA vs SGPA Comparison */}
         <Card>
           <CardHeader>
-            <CardTitle>Performance Overview</CardTitle>
-            <CardDescription>Your marks across all subjects</CardDescription>
+            <CardTitle>GPA Analysis</CardTitle>
+            <CardDescription>CGPA vs SGPA performance comparison</CardDescription>
           </CardHeader>
           <CardContent>
-             <ChartContainer config={chartConfig}>
-               <ResponsiveContainer width="100%" height={300}>
-                 <LineChart data={chartData}>
-                   <CartesianGrid strokeDasharray="3 3" />
-                   <XAxis 
-                     dataKey="subject" 
-                     tick={{ fontSize: 12 }}
-                     angle={-45}
-                     textAnchor="end"
-                     height={100}
-                   />
-                   <YAxis />
-                   <ChartTooltip content={<ChartTooltipContent />} />
-                   <Line 
-                     type="monotone" 
-                     dataKey="total" 
-                     stroke="var(--color-total)" 
-                     strokeWidth={2}
-                     dot={{ fill: "var(--color-total)" }}
-                   />
-                 </LineChart>
-               </ResponsiveContainer>
-             </ChartContainer>
+            <ChartContainer config={chartConfig}>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={cgpaComparisonData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis domain={[0, 10]} />
+                  <ChartTooltip 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const value = payload[0].value;
+                        const name = payload[0].payload.name;
+                        return (
+                          <div className="bg-background p-2 border rounded shadow">
+                            <p className="font-medium">{name}</p>
+                            <p className="text-sm">{`Value: ${typeof value === 'number' ? value.toFixed(2) : value}`}</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke="#8884d8" 
+                    strokeWidth={3}
+                    dot={{ fill: "#8884d8", strokeWidth: 2, r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
-      )}
+      </div>
 
       {/* Subject-wise Marks */}
       {marks.length > 0 && (
@@ -634,50 +682,50 @@ export const StudentMarks: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2">Subject</th>
-                    <th className="text-center p-2">Mid-1 (25)</th>
-                    <th className="text-center p-2">Mid-2 (25)</th>
-                    <th className="text-center p-2">Assignment (10)</th>
-                    <th className="text-center p-2">Total (60)</th>
-                    <th className="text-center p-2">Percentage</th>
-                    <th className="text-center p-2">Grade</th>
-                    <th className="text-center p-2">Progress</th>
-                    <th className="text-center p-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <div className="min-w-full">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {marks.map((mark) => {
                     const percentage = (mark.total / 60) * 100; // Total out of 60
                     const grade = calculateGrade(percentage);
                     return (
-                      <tr key={mark.id} className="border-b hover:bg-gray-50">
-                        <td className="p-2 font-medium">{mark.subject}</td>
-                        <td className="text-center p-2">{mark.mid1}</td>
-                        <td className="text-center p-2">{mark.mid2}</td>
-                        <td className="text-center p-2">{mark.assignment}</td>
-                        <td className="text-center p-2 font-bold">{mark.total}</td>
-                        <td className="text-center p-2">{percentage.toFixed(1)}%</td>
-                        <td className="text-center p-2">
-                          <Badge className={getGradeColor(grade)}>
-                            {grade}
-                          </Badge>
-                        </td>
-                        <td className="text-center p-2">
-                          <Progress value={percentage} className="w-20" />
-                        </td>
-                        <td className="text-center p-2">
-                          <Button size="sm" variant="ghost" onClick={() => handleEdit(mark)}>
-                            <Edit2 className="h-3 w-3" />
-                          </Button>
-                        </td>
-                      </tr>
+                      <Card key={mark.id} className="border hover:shadow-md transition-shadow">
+                        <CardHeader className="pb-2">
+                          <div className="flex justify-between items-start">
+                            <CardTitle className="text-sm">{mark.subject}</CardTitle>
+                            <Button size="sm" variant="ghost" onClick={() => handleEdit(mark)}>
+                              <Edit2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div className="text-center">
+                              <div className="font-medium">Mid-1</div>
+                              <div className="text-blue-600">{mark.mid1}/25</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="font-medium">Mid-2</div>
+                              <div className="text-green-600">{mark.mid2}/25</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="font-medium">Assign</div>
+                              <div className="text-purple-600">{mark.assignment}/10</div>
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold">{mark.total}/60</div>
+                            <div className="text-sm text-muted-foreground">{percentage.toFixed(1)}%</div>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <Badge className={getGradeColor(grade)}>{grade}</Badge>
+                            <Progress value={percentage} className="w-16 h-2" />
+                          </div>
+                        </CardContent>
+                      </Card>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
